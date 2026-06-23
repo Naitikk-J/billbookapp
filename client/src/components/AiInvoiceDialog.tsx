@@ -59,12 +59,19 @@ export function AiInvoiceDialog({
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
+  const [micError, setMicError] = useState<'network' | 'denied' | 'unsupported' | 'other' | null>(
+    null
+  );
   const [stage, setStage] = useState<'idle' | 'thinking' | 'creating'>('idle');
   const recognitionRef = useRef<unknown>(null);
 
   const supportsSpeech =
     typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const isBrave =
+    typeof navigator !== 'undefined' &&
+    typeof (navigator as unknown as { brave?: unknown }).brave !== 'undefined';
 
   const generate = useMutation({
     mutationFn: async (prompt: string): Promise<Invoice> => {
@@ -150,14 +157,16 @@ export function AiInvoiceDialog({
     if (!open) {
       stopListening();
       setKeyMissing(false);
+      setMicError(null);
     }
   }, [open]);
 
   function startListening() {
     if (!supportsSpeech) {
-      toast.error('Voice input not supported in this browser. Try Chrome.');
+      setMicError('unsupported');
       return;
     }
+    setMicError(null);
     const SR =
       (window as unknown as { SpeechRecognition?: new () => unknown }).SpeechRecognition ??
       (window as unknown as { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition;
@@ -166,16 +175,18 @@ export function AiInvoiceDialog({
       continuous: boolean;
       interimResults: boolean;
       lang: string;
+      maxAlternatives: number;
       onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void;
       onerror: (e: { error: string }) => void;
       onend: () => void;
       start: () => void;
       stop: () => void;
     })();
-    r.continuous = true;
+    r.continuous = false;
     r.interimResults = true;
+    r.maxAlternatives = 1;
     r.lang = 'en-IN';
-    let baseline = text;
+    const baseline = text;
     r.onresult = (e) => {
       let transcript = '';
       for (let i = 0; i < e.results.length; i++) {
@@ -184,16 +195,27 @@ export function AiInvoiceDialog({
       setText(((baseline ? baseline + ' ' : '') + transcript).trim());
     };
     r.onerror = (e) => {
-      toast.error(`Mic error: ${e.error}`);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setMicError('denied');
+      } else if (e.error === 'network') {
+        setMicError('network');
+      } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        setMicError('other');
+        toast.error(`Mic error: ${e.error}`);
+      }
       setListening(false);
     };
     r.onend = () => {
       setListening(false);
     };
-    r.start();
-    recognitionRef.current = r;
-    setListening(true);
-    baseline = text;
+    try {
+      r.start();
+      recognitionRef.current = r;
+      setListening(true);
+    } catch {
+      setMicError('other');
+      setListening(false);
+    }
   }
 
   function stopListening() {
@@ -271,6 +293,78 @@ export function AiInvoiceDialog({
                     Dismiss
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {micError ? (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+              <div className="space-y-1.5">
+                {micError === 'network' ? (
+                  <>
+                    <p className="font-medium text-amber-700 dark:text-amber-300">
+                      Voice input blocked by the browser
+                    </p>
+                    <p className="text-muted-foreground">
+                      The mic uses Google's speech service. {isBrave ? 'Brave Shields' : 'A shield or privacy extension'} is blocking it on this site.
+                    </p>
+                    <ul className="ml-4 list-disc space-y-0.5 text-muted-foreground">
+                      {isBrave ? (
+                        <li>
+                          Click the <strong>Brave Shields</strong> icon (lion) in the address bar →
+                          turn shields <strong>Down for this site</strong>, then reload.
+                        </li>
+                      ) : (
+                        <li>Disable ad-blockers / shields for this site and reload.</li>
+                      )}
+                      <li>
+                        Or open the app in <strong>Google Chrome</strong> where dictation works
+                        out of the box.
+                      </li>
+                      <li>Or just type the prompt — it's faster anyway.</li>
+                    </ul>
+                  </>
+                ) : micError === 'denied' ? (
+                  <>
+                    <p className="font-medium text-amber-700 dark:text-amber-300">
+                      Mic permission denied
+                    </p>
+                    <p className="text-muted-foreground">
+                      Click the lock icon in the address bar → set <strong>Microphone</strong> to
+                      Allow, then reload.
+                    </p>
+                  </>
+                ) : micError === 'unsupported' ? (
+                  <>
+                    <p className="font-medium text-amber-700 dark:text-amber-300">
+                      Voice input not supported here
+                    </p>
+                    <p className="text-muted-foreground">
+                      Try Google Chrome — Safari and Firefox don't support the speech API.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium text-amber-700 dark:text-amber-300">
+                      Couldn't start the mic
+                    </p>
+                    <p className="text-muted-foreground">
+                      Try again, or just type the prompt — it works the same.
+                    </p>
+                  </>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setMicError(null)}
+                >
+                  Dismiss
+                </Button>
               </div>
             </div>
           </div>
