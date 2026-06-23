@@ -60,7 +60,7 @@ export default function RegisterPage() {
   return (
     <AuthLayout
       title="Create your workspace"
-      subtitle="One account for your whole team. Start free, upgrade when you outgrow it."
+      subtitle="One account for your whole team. Free forever — every feature included."
       footer={
         <span>
           Already have an account? <Link to="/login" className="text-secondary hover:underline">Sign in</Link>

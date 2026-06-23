@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
-  CheckCircle2,
   Plane,
   ShieldCheck,
   Sparkles,
@@ -74,53 +73,6 @@ const stats = [
   { label: 'PDF render time', value: '<2s' },
 ];
 
-const pricing = [
-  {
-    name: 'Starter',
-    price: '₹0',
-    cadence: 'forever',
-    highlight: false,
-    features: [
-      'Up to 25 invoices / month',
-      '3 invoice templates',
-      'Unlimited customers',
-      'PDF download',
-      'Community support',
-    ],
-    cta: 'Start free',
-  },
-  {
-    name: 'Studio',
-    price: '₹799',
-    cadence: '/month',
-    highlight: true,
-    features: [
-      'Unlimited invoices',
-      'All 50+ templates',
-      'Travel package billing',
-      'Recurring invoices',
-      'Email + reminders',
-      'Priority support',
-    ],
-    cta: 'Try Studio',
-  },
-  {
-    name: 'Agency',
-    price: '₹2,499',
-    cadence: '/month',
-    highlight: false,
-    features: [
-      'Everything in Studio',
-      'Multi-branch & multi-company',
-      'Custom templates & domain',
-      'Client portal',
-      'Role-based access',
-      'White-label PDFs',
-    ],
-    cta: 'Talk to sales',
-  },
-];
-
 const faqs = [
   {
     q: 'Is this only for travel agencies?',
@@ -157,7 +109,6 @@ function Header() {
         <nav className="hidden gap-8 text-sm text-muted-foreground md:flex">
           <a href="#features" className="hover:text-foreground transition-colors">Features</a>
           <a href="#templates" className="hover:text-foreground transition-colors">Templates</a>
-          <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
           <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
         </nav>
         <div className="flex items-center gap-2">
@@ -207,7 +158,7 @@ function Hero() {
             </Button>
           </div>
           <p className="mt-4 text-xs text-muted-foreground">
-            No credit card. 5-minute setup. Cancel anytime.
+            Free forever · 5-minute setup · No credit card required.
           </p>
         </motion.div>
 
@@ -458,63 +409,6 @@ function Showcase() {
   );
 }
 
-function Pricing() {
-  return (
-    <section id="pricing" className="border-t border-border/60 bg-muted/20 py-24 md:py-32">
-      <div className="container">
-        <div className="mx-auto max-w-2xl text-center">
-          <Badge variant="muted" className="mb-3">Pricing</Badge>
-          <h2 className="font-display text-4xl font-bold tracking-tight md:text-5xl text-balance">
-            Plans that grow with your agency.
-          </h2>
-          <p className="mt-4 text-muted-foreground">
-            Start free. Upgrade when you outgrow the limits. Cancel any time.
-          </p>
-        </div>
-        <div className="mt-14 grid gap-6 lg:grid-cols-3">
-          {pricing.map((p) => (
-            <div
-              key={p.name}
-              className={cn(
-                'relative rounded-2xl border bg-card p-8 shadow-soft',
-                p.highlight
-                  ? 'border-transparent bg-gradient-to-b from-royal-500/10 to-transparent ring-1 ring-royal-500/30'
-                  : 'border-border'
-              )}
-            >
-              {p.highlight ? (
-                <Badge variant="primary" className="absolute right-6 top-6">
-                  Most popular
-                </Badge>
-              ) : null}
-              <p className="font-display text-lg font-semibold">{p.name}</p>
-              <div className="mt-4 flex items-baseline gap-1">
-                <p className="font-display text-4xl font-bold tracking-tight">{p.price}</p>
-                <p className="text-sm text-muted-foreground">{p.cadence}</p>
-              </div>
-              <ul className="mt-6 space-y-3 text-sm">
-                {p.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Button
-                asChild
-                variant={p.highlight ? 'primary' : 'outline'}
-                className="mt-8 w-full"
-              >
-                <Link to="/register">{p.cta}</Link>
-              </Button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function FAQ() {
   return (
     <section id="faq" className="py-24 md:py-32">
@@ -590,7 +484,6 @@ export default function LandingPage() {
         <Features />
         <Templates />
         <Showcase />
-        <Pricing />
         <FAQ />
         <CTA />
       </main>
