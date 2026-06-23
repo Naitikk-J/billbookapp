@@ -6,6 +6,10 @@ build
 .vercel
 .turbo
 coverage
+*.tsbuildinfo
+
+# private reference assets (not part of source)
+Satyaprakash.pdf
 
 .env
 .env.local

@@ -1,4 +1,5 @@
 import type { Company, Invoice } from '@/lib/types';
+import { HeritageTemplate } from './HeritageTemplate';
 import { ModernTemplate } from './ModernTemplate';
 import { ClassicTemplate } from './ClassicTemplate';
 import { TravelTemplate } from './TravelTemplate';
@@ -13,6 +14,13 @@ export interface TemplateOption {
 }
 
 export const TEMPLATES: TemplateOption[] = [
+  {
+    id: 'heritage',
+    name: 'Heritage',
+    description: 'Boutique gold-trimmed travel-agency classic.',
+    accent: 'from-[#C8A057] to-[#1A2F4F]',
+    render: ({ invoice, company }) => <HeritageTemplate invoice={invoice} company={company} />,
+  },
   {
     id: 'modern',
     name: 'Aurora',

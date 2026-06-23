@@ -132,7 +132,7 @@ export default function InvoiceBuilderPage() {
       issueDate: toInputDate(new Date()),
       dueDate: '',
       currency: 'INR',
-      template: 'modern',
+      template: 'heritage',
       taxMode: 'intra',
       notes: '',
       terms: '',
