@@ -21,13 +21,17 @@ const customerSchema = z.object({
   postalCode: z.string().max(40).optional().default(''),
   notes: z.string().max(2000).optional().default(''),
   tags: z.array(z.string().max(40)).max(20).optional().default([]),
+  kind: z.enum(['customer', 'supplier']).optional().default('customer'),
+  openingBalance: z.number().optional().default(0),
 });
 
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const q = String(req.query.q ?? '').trim();
+    const kind = req.query.kind ? String(req.query.kind) : undefined;
     const filter: Record<string, unknown> = { companyId: req.user!.companyId };
+    if (kind === 'customer' || kind === 'supplier') filter.kind = kind;
     if (q) {
       filter.$or = [
         { name: { $regex: q, $options: 'i' } },

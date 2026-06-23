@@ -48,8 +48,47 @@ export interface Customer {
   postalCode?: string;
   notes?: string;
   tags?: string[];
+  kind?: 'customer' | 'supplier';
+  openingBalance?: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type LedgerEntryKind = 'payment' | 'credit';
+export type LedgerEntryMethod = 'cash' | 'upi' | 'bank' | 'card' | 'cheque' | 'other';
+
+export interface LedgerEntry {
+  _id: string;
+  companyId: string;
+  customerId: string;
+  kind: LedgerEntryKind;
+  amount: number;
+  note?: string;
+  method?: LedgerEntryMethod;
+  date: string;
+  createdAt?: string;
+}
+
+export interface LedgerAccount {
+  _id: string;
+  name: string;
+  kind: 'customer' | 'supplier';
+  phone?: string;
+  email?: string;
+  city?: string;
+  balance: number;
+  lastActivity?: string | null;
+}
+
+export interface LedgerSummary {
+  accounts: LedgerAccount[];
+  totals: { netReceivable: number; netPayable: number; accountsCount: number };
+}
+
+export interface LedgerCustomerDetail {
+  customer: LedgerAccount & { openingBalance: number };
+  entries: LedgerEntry[];
+  totals: { totalPayment: number; totalCredit: number; balance: number };
 }
 
 export interface Product {

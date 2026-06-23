@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Search,
+  BookOpen,
 } from 'lucide-react';
 import { Brand } from './Brand';
 import { ThemeToggle } from './ThemeToggle';
@@ -31,6 +32,7 @@ import {
 const nav = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/app/invoices', label: 'Invoices', icon: FileText, end: false },
+  { to: '/app/ledger', label: 'Ledger', icon: BookOpen, end: false },
   { to: '/app/customers', label: 'Customers', icon: Users, end: false },
   { to: '/app/products', label: 'Products', icon: Package, end: false },
   { to: '/app/settings', label: 'Settings', icon: SettingsIcon, end: false },

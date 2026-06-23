@@ -14,6 +14,7 @@ import companyRoutes from './routes/company';
 import customerRoutes from './routes/customers';
 import productRoutes from './routes/products';
 import invoiceRoutes from './routes/invoices';
+import ledgerRoutes from './routes/ledger';
 
 let initialized = false;
 
@@ -54,6 +55,7 @@ export function createApp(): Express {
   app.use('/api/customers', customerRoutes);
   app.use('/api/products', productRoutes);
   app.use('/api/invoices', invoiceRoutes);
+  app.use('/api/ledger', ledgerRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

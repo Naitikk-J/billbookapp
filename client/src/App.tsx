@@ -15,6 +15,7 @@ const InvoicesPage = lazy(() => import('./pages/app/Invoices'));
 const InvoiceBuilderPage = lazy(() => import('./pages/app/InvoiceBuilder'));
 const InvoiceDetailPage = lazy(() => import('./pages/app/InvoiceDetail'));
 const SettingsPage = lazy(() => import('./pages/app/Settings'));
+const LedgerPage = lazy(() => import('./pages/app/Ledger'));
 
 function PageFallback() {
   return (
@@ -49,6 +50,8 @@ export default function App() {
           <Route path="invoices/new" element={<InvoiceBuilderPage />} />
           <Route path="invoices/:id" element={<InvoiceDetailPage />} />
           <Route path="invoices/:id/edit" element={<InvoiceBuilderPage />} />
+          <Route path="ledger" element={<LedgerPage />} />
+          <Route path="ledger/:customerId" element={<LedgerPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 

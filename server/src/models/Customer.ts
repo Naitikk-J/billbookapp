@@ -14,6 +14,13 @@ const customerSchema = new Schema(
     postalCode: { type: String, default: '' },
     notes: { type: String, default: '' },
     tags: { type: [String], default: [] },
+    kind: {
+      type: String,
+      enum: ['customer', 'supplier'],
+      default: 'customer',
+      index: true,
+    },
+    openingBalance: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
