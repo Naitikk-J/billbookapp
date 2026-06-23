@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Loader2, Mic, MicOff, Sparkles, Wand2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AlertTriangle, Loader2, Mic, MicOff, Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, apiError } from '@/lib/api';
@@ -56,6 +56,7 @@ export function AiInvoiceDialog({
   const navigate = useNavigate();
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
+  const [keyMissing, setKeyMissing] = useState(false);
   const recognitionRef = useRef<unknown>(null);
 
   const supportsSpeech =
@@ -68,6 +69,7 @@ export function AiInvoiceDialog({
       return res.data.draft;
     },
     onSuccess: (draft) => {
+      setKeyMissing(false);
       onOpenChange(false);
       setText('');
       const route =
@@ -75,12 +77,20 @@ export function AiInvoiceDialog({
       navigate(route, { state: { aiDraft: draft } });
       toast.success('Draft ready — review and save.');
     },
-    onError: (err) => toast.error(apiError(err)),
+    onError: (err) => {
+      const message = apiError(err);
+      if (/api key/i.test(message)) {
+        setKeyMissing(true);
+        return;
+      }
+      toast.error(message);
+    },
   });
 
   useEffect(() => {
     if (!open) {
       stopListening();
+      setKeyMissing(false);
     }
   }, [open]);
 
@@ -155,6 +165,55 @@ export function AiInvoiceDialog({
             GST and dates — you just review and save.
           </DialogDescription>
         </DialogHeader>
+
+        {keyMissing ? (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <div className="space-y-2">
+                <p className="font-medium text-amber-700 dark:text-amber-300">
+                  Gemini API key required
+                </p>
+                <p className="text-muted-foreground">
+                  Paste a free Google AI key in Settings to enable AI Invoice. It takes 30 seconds.
+                </p>
+                <ol className="ml-4 list-decimal space-y-1 text-xs text-muted-foreground">
+                  <li>
+                    Open{' '}
+                    <a
+                      className="text-emerald-500 hover:underline"
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      aistudio.google.com/app/apikey
+                    </a>{' '}
+                    and click <em>Create API key</em>.
+                  </li>
+                  <li>Copy the <code className="rounded bg-muted px-1">AIza…</code> string.</li>
+                  <li>
+                    Paste it in <strong>Settings → AI assistant → Gemini API key</strong> and save.
+                  </li>
+                </ol>
+                <div className="flex gap-2 pt-1">
+                  <Button asChild variant="primary" size="sm">
+                    <Link to="/app/settings" onClick={() => onOpenChange(false)}>
+                      <Sparkles className="h-4 w-4" /> Open Settings
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setKeyMissing(false)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="space-y-3">
           <div className="relative">
