@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 99%;
+    --foreground: 222 35% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 35% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 35% 10%;
+
+    --primary: 224 47% 13%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 224 100% 58%;
+    --secondary-foreground: 0 0% 100%;
+
+    --accent: 158 84% 39%;
+    --accent-foreground: 0 0% 100%;
+
+    --muted: 220 24% 96%;
+    --muted-foreground: 222 12% 42%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 158 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 30 95% 55%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 220 18% 90%;
+    --input: 220 18% 90%;
+    --ring: 224 100% 58%;
+
+    --radius: 12px;
+  }
+
+  .dark {
+    --background: 222 38% 6%;
+    --foreground: 210 25% 96%;
+
+    --card: 222 32% 9%;
+    --card-foreground: 210 25% 96%;
+
+    --popover: 222 32% 9%;
+    --popover-foreground: 210 25% 96%;
+
+    --primary: 210 25% 96%;
+    --primary-foreground: 222 38% 6%;
+
+    --secondary: 224 100% 65%;
+    --secondary-foreground: 222 38% 6%;
+
+    --accent: 158 84% 45%;
+    --accent-foreground: 222 38% 6%;
+
+    --muted: 222 22% 14%;
+    --muted-foreground: 220 12% 65%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 158 84% 45%;
+    --success-foreground: 222 38% 6%;
+
+    --warning: 30 95% 60%;
+    --warning-foreground: 222 38% 6%;
+
+    --border: 222 22% 16%;
+    --input: 222 22% 16%;
+    --ring: 224 100% 65%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  ::selection {
+    background-color: rgba(42, 91, 255, 0.25);
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply backdrop-blur-xl bg-background/60 border border-border;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  .text-gradient {
+    background: linear-gradient(135deg, hsl(var(--foreground)) 0%, hsl(var(--secondary)) 60%, hsl(var(--accent)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}

@@ -1,0 +1,138 @@
+import { useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { Loader2, Save } from 'lucide-react';
+import { toast } from 'sonner';
+
+import { api, apiError } from '@/lib/api';
+import type { Company } from '@/lib/types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+
+type Values = Partial<Company>;
+
+export default function SettingsPage() {
+  const qc = useQueryClient();
+  const companyQuery = useQuery({
+    queryKey: ['company'],
+    queryFn: async () => {
+      const res = await api.get<{ company: Company }>('/company');
+      return res.data.company;
+    },
+  });
+
+  const form = useForm<Values>({ defaultValues: {} });
+
+  useEffect(() => {
+    if (companyQuery.data) form.reset(companyQuery.data);
+  }, [companyQuery.data, form]);
+
+  const save = useMutation({
+    mutationFn: async (values: Values) => {
+      const res = await api.patch<{ company: Company }>('/company', values);
+      return res.data.company;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company'] });
+      toast.success('Settings saved');
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Company details show up on every invoice you generate.
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          onClick={form.handleSubmit((v) => save.mutate(v))}
+          disabled={save.isPending}
+        >
+          {save.isPending ? <Loader2 className="animate-spin" /> : <><Save className="h-4 w-4" /> Save</>}
+        </Button>
+      </div>
+
+      {companyQuery.isLoading ? (
+        <Skeleton className="h-96 w-full" />
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Company profile</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <Field label="Name"><Input {...form.register('name')} /></Field>
+              <Field label="Legal name"><Input {...form.register('legalName')} /></Field>
+              <Field label="Industry"><Input {...form.register('industry')} /></Field>
+              <Field label="Website"><Input {...form.register('website')} /></Field>
+              <Field label="Email"><Input type="email" {...form.register('email')} /></Field>
+              <Field label="Phone"><Input {...form.register('phone')} /></Field>
+              <Field label="Logo URL"><Input {...form.register('logoUrl')} /></Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tax & address</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <Field label="GSTIN"><Input {...form.register('gstNumber')} /></Field>
+              <Field label="PAN"><Input {...form.register('panNumber')} /></Field>
+              <Field label="Address"><Textarea rows={2} {...form.register('address')} /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="City"><Input {...form.register('city')} /></Field>
+                <Field label="State"><Input {...form.register('state')} /></Field>
+                <Field label="Country"><Input {...form.register('country')} /></Field>
+                <Field label="Postal code"><Input {...form.register('postalCode')} /></Field>
+              </div>
+              <Field label="Currency"><Input {...form.register('currency')} /></Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Bank & UPI</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <Field label="Bank name"><Input {...form.register('bankName')} /></Field>
+              <Field label="Account number"><Input {...form.register('accountNumber')} /></Field>
+              <Field label="IFSC"><Input {...form.register('ifsc')} /></Field>
+              <Field label="UPI ID"><Input placeholder="yourname@upi" {...form.register('upiId')} /></Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Defaults</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <Field label="Invoice prefix"><Input {...form.register('invoicePrefix')} /></Field>
+              <Field label="Quote prefix"><Input {...form.register('quotePrefix')} /></Field>
+              <Field label="Default terms">
+                <Textarea rows={5} {...form.register('defaultTerms')} />
+              </Field>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
