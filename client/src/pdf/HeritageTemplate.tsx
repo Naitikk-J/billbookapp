@@ -271,20 +271,59 @@ function CornerOrnament({ flipX, flipY }: { flipX?: boolean; flipY?: boolean }) 
 function PlaneLogo() {
   return (
     <View style={styles.brandFallback}>
-      <Svg viewBox="0 0 120 70" style={{ width: 96, height: 56 }}>
-        {/* Plane body */}
+      <Svg viewBox="0 0 140 80" style={{ width: 100, height: 58 }}>
+        {/* Gold swoosh / contrail underneath plane */}
         <Path
-          d="M14 36 L96 18 L100 22 L52 40 L42 60 L36 58 L40 42 L18 44 Z"
+          d="M4 70 C 30 64, 70 62, 132 50 L 132 56 C 70 70, 30 72, 4 76 Z"
+          fill={GOLD}
+        />
+        <Path
+          d="M14 64 C 40 60, 80 58, 128 48"
+          stroke={GOLD_SOFT}
+          strokeWidth={1.2}
+          fill="none"
+        />
+
+        {/* Far wing (behind body) - swept back */}
+        <Path
+          d="M 70 28 L 38 6 L 44 6 L 86 24 Z"
           fill={NAVY}
         />
-        {/* Tail accent */}
-        <Path d="M64 30 L82 26 L78 34 L60 36 Z" fill={GOLD} />
-        {/* Speed line */}
+
+        {/* Tail fin (vertical stabilizer) */}
         <Path
-          d="M10 50 C 30 46, 60 48, 96 40"
-          stroke={GOLD}
-          strokeWidth={2.4}
-          fill="none"
+          d="M 96 26 L 92 4 L 98 4 L 110 22 Z"
+          fill={NAVY}
+        />
+
+        {/* Tail horizontal stabilizers */}
+        <Path
+          d="M 104 26 L 122 16 L 126 18 L 110 30 Z"
+          fill={NAVY}
+        />
+
+        {/* Fuselage - elongated body angled up-right */}
+        <Path
+          d="M 8 50 C 30 44, 70 36, 122 22 C 128 21, 132 23, 130 26 C 110 32, 70 42, 24 56 C 14 58, 6 56, 8 50 Z"
+          fill={NAVY}
+        />
+
+        {/* Near wing (front, lower) */}
+        <Path
+          d="M 50 40 L 28 60 L 38 60 L 74 42 Z"
+          fill={NAVY}
+        />
+
+        {/* Engine pod under near wing */}
+        <Path
+          d="M 48 50 L 60 48 L 58 54 L 46 56 Z"
+          fill={NAVY}
+        />
+
+        {/* Cockpit window highlight (tiny gold accent) */}
+        <Path
+          d="M 116 24 L 124 22 L 122 26 L 114 28 Z"
+          fill={GOLD}
         />
       </Svg>
       <Text style={styles.brandName}>SAFARMATE</Text>
