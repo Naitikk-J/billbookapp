@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Loader2, Mic, MicOff, Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/cn';
+import type { Customer, Invoice } from '@/lib/types';
 
 export interface AiInvoiceDraft {
   customer: {
@@ -54,30 +55,88 @@ export function AiInvoiceDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [keyMissing, setKeyMissing] = useState(false);
+  const [stage, setStage] = useState<'idle' | 'thinking' | 'creating'>('idle');
   const recognitionRef = useRef<unknown>(null);
 
   const supportsSpeech =
     typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
-  const parse = useMutation({
-    mutationFn: async (prompt: string) => {
-      const res = await api.post<{ draft: AiInvoiceDraft }>('/ai/invoice/parse', { prompt });
-      return res.data.draft;
+  const generate = useMutation({
+    mutationFn: async (prompt: string): Promise<Invoice> => {
+      setStage('thinking');
+      const parsed = await api.post<{ draft: AiInvoiceDraft }>('/ai/invoice/parse', { prompt });
+      const draft = parsed.data.draft;
+
+      if (!draft.items.length) {
+        throw new Error("Couldn't extract any line items — try adding the amount or item name.");
+      }
+
+      let customerId = draft.matchedCustomerId;
+      if (!customerId) {
+        const name = (draft.customer?.name ?? '').trim();
+        if (!name) {
+          throw new Error('No customer name detected — mention who the bill is for.');
+        }
+        const created = await api.post<{ customer: Customer }>('/customers', {
+          name,
+          phone: draft.customer?.phone ?? '',
+          email: draft.customer?.email ?? '',
+          gstNumber: draft.customer?.gstNumber ?? '',
+          city: draft.customer?.city ?? '',
+        });
+        customerId = created.data.customer._id;
+      }
+
+      setStage('creating');
+
+      const dueDate = (() => {
+        const days = Math.max(0, Math.min(365, Number(draft.dueDateOffsetDays ?? 7)));
+        if (!days) return undefined;
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return d.toISOString();
+      })();
+
+      const overallDiscount = Math.max(0, Math.min(100, Number(draft.discountPercent ?? 0)));
+
+      const created = await api.post<{ invoice: Invoice }>('/invoices', {
+        kind: draft.kind ?? 'invoice',
+        customerId,
+        currency: draft.currency || 'INR',
+        issueDate: new Date().toISOString(),
+        dueDate,
+        items: draft.items.map((it) => ({
+          description: it.description,
+          quantity: Number(it.quantity) || 1,
+          unit: it.unit || 'pax',
+          rate: Number(it.rate) || 0,
+          taxPercent: Number(it.taxPercent) || 0,
+          discountPercent: overallDiscount,
+        })),
+        notes: draft.notes ?? '',
+        taxMode: 'intra',
+        status: 'draft',
+      });
+
+      return created.data.invoice;
     },
-    onSuccess: (draft) => {
+    onSuccess: (invoice) => {
       setKeyMissing(false);
-      onOpenChange(false);
+      setStage('idle');
       setText('');
-      const route =
-        draft.kind === 'invoice' ? '/app/invoices/new' : `/app/invoices/new?kind=${draft.kind}`;
-      navigate(route, { state: { aiDraft: draft } });
-      toast.success('Draft ready — review and save.');
+      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+      toast.success(`${labelFor(invoice.kind)} ${invoice.number} created`);
+      navigate(`/app/invoices/${invoice._id}`);
     },
     onError: (err) => {
+      setStage('idle');
       const message = apiError(err);
       if (/api key/i.test(message)) {
         setKeyMissing(true);
@@ -150,8 +209,10 @@ export function AiInvoiceDialog({
       toast.error('Describe the bill you want to create.');
       return;
     }
-    parse.mutate(trimmed);
+    generate.mutate(trimmed);
   }
+
+  const busy = generate.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -161,8 +222,8 @@ export function AiInvoiceDialog({
             <Sparkles className="h-5 w-5 text-emerald-500" /> AI Invoice
           </DialogTitle>
           <DialogDescription>
-            Describe the bill in plain English (or Hinglish). I'll extract the customer, line items,
-            GST and dates — you just review and save.
+            Describe the bill in plain English (or Hinglish). I'll extract the customer, line items
+            and GST, then create the invoice straight away.
           </DialogDescription>
         </DialogHeader>
 
@@ -260,17 +321,18 @@ export function AiInvoiceDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" disabled={parse.isPending} onClick={handleSubmit}>
-            {parse.isPending ? (
+          <Button type="button" variant="primary" disabled={busy} onClick={handleSubmit}>
+            {busy ? (
               <>
-                <Loader2 className="animate-spin" /> Drafting…
+                <Loader2 className="animate-spin" />{' '}
+                {stage === 'creating' ? 'Creating invoice…' : 'Reading your request…'}
               </>
             ) : (
               <>
-                <Wand2 className="h-4 w-4" /> Generate invoice
+                <Wand2 className="h-4 w-4" /> Create invoice
               </>
             )}
           </Button>
@@ -278,4 +340,17 @@ export function AiInvoiceDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function labelFor(kind: AiInvoiceDraft['kind']): string {
+  switch (kind) {
+    case 'quote':
+      return 'Quote';
+    case 'proforma':
+      return 'Proforma';
+    case 'receipt':
+      return 'Receipt';
+    default:
+      return 'Invoice';
+  }
 }
