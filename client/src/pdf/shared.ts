@@ -25,14 +25,30 @@ export function ensureFonts() {
 }
 
 export function fmt(amount: number, currency = 'INR'): string {
+  const value = amount || 0;
+  const isWhole = Math.round(value * 100) % 100 === 0;
   try {
     return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
       style: 'currency',
       currency,
+      minimumFractionDigits: isWhole ? 0 : 2,
       maximumFractionDigits: 2,
-    }).format(amount || 0);
+    }).format(value);
   } catch {
-    return `${currency} ${(amount || 0).toFixed(2)}`;
+    return `${currency} ${value.toFixed(isWhole ? 0 : 2)}`;
+  }
+}
+
+export function fmtPlain(amount: number, currency = 'INR'): string {
+  const value = amount || 0;
+  const isWhole = Math.round(value * 100) % 100 === 0;
+  try {
+    return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
+      minimumFractionDigits: isWhole ? 0 : 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return value.toFixed(isWhole ? 0 : 2);
   }
 }
 
