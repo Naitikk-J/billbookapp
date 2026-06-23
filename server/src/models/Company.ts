@@ -33,6 +33,7 @@ const companySchema = new Schema(
     nextInvoiceNumber: { type: Number, default: 1 },
     quotePrefix: { type: String, default: 'QT-' },
     nextQuoteNumber: { type: Number, default: 1 },
+    geminiApiKey: { type: String, default: '' },
   },
   { timestamps: true }
 );

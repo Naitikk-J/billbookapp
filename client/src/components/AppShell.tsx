@@ -12,6 +12,7 @@ import {
   X,
   Search,
   BookOpen,
+  Sparkles,
 } from 'lucide-react';
 import { Brand } from './Brand';
 import { ThemeToggle } from './ThemeToggle';
@@ -20,6 +21,7 @@ import { cn } from '@/lib/cn';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { signOut } from '@/store/authSlice';
 import { initials } from '@/lib/format';
+import { AiInvoiceDialog } from './AiInvoiceDialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +45,7 @@ export function AppShell() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   function handleSignOut() {
     dispatch(signOut());
@@ -146,12 +149,22 @@ export function AppShell() {
             />
           </div>
           <ThemeToggle />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setAiOpen(true)}
+            className="hidden md:inline-flex border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 to-royal-500/10 text-foreground hover:from-emerald-500/20 hover:to-royal-500/20"
+          >
+            <Sparkles className="h-4 w-4 text-emerald-500" /> AI
+          </Button>
           <Button asChild variant="primary" size="sm" className="hidden md:inline-flex">
             <Link to="/app/invoices/new">
               <Plus className="h-4 w-4" /> Create
             </Link>
           </Button>
         </header>
+        <AiInvoiceDialog open={aiOpen} onOpenChange={setAiOpen} />
         <main className="mx-auto max-w-7xl px-4 py-8 md:px-8">
           <Outlet />
         </main>

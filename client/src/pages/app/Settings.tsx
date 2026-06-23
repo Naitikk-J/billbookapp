@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, apiError } from '@/lib/api';
@@ -119,6 +119,37 @@ export default function SettingsPage() {
               <Field label="Quote prefix"><Input {...form.register('quotePrefix')} /></Field>
               <Field label="Default terms">
                 <Textarea rows={5} {...form.register('defaultTerms')} />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-emerald-500" /> AI assistant
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Paste a Google Gemini API key to enable natural-language invoice creation.
+                Get one free at{' '}
+                <a
+                  className="text-emerald-500 hover:underline"
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  aistudio.google.com/app/apikey
+                </a>
+                . Leave empty to use the server-wide key (if configured).
+              </p>
+            </CardHeader>
+            <CardContent>
+              <Field label="Gemini API key">
+                <Input
+                  type="password"
+                  placeholder="AIza…"
+                  autoComplete="off"
+                  {...form.register('geminiApiKey')}
+                />
               </Field>
             </CardContent>
           </Card>

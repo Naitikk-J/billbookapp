@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,11 +36,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { AiInvoiceDialog } from '@/components/AiInvoiceDialog';
 
 export default function InvoicesPage() {
   const qc = useQueryClient();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<string>('all');
+  const [aiOpen, setAiOpen] = useState(false);
 
   const list = useQuery({
     queryKey: ['invoices', query, status],
@@ -81,12 +84,24 @@ export default function InvoicesPage() {
           <h1 className="font-display text-3xl font-bold tracking-tight">Invoices</h1>
           <p className="text-sm text-muted-foreground">All your invoices, quotes, proformas, and receipts in one place.</p>
         </div>
-        <Button asChild variant="primary">
-          <Link to="/app/invoices/new">
-            <Plus className="h-4 w-4" /> New invoice
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setAiOpen(true)}
+            className="border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 to-royal-500/10 text-foreground hover:from-emerald-500/20 hover:to-royal-500/20"
+          >
+            <Sparkles className="h-4 w-4 text-emerald-500" /> AI Invoice
+          </Button>
+          <Button asChild variant="primary">
+            <Link to="/app/invoices/new">
+              <Plus className="h-4 w-4" /> New invoice
+            </Link>
+          </Button>
+        </div>
       </div>
+
+      <AiInvoiceDialog open={aiOpen} onOpenChange={setAiOpen} />
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
         <div className="relative max-w-md flex-1">

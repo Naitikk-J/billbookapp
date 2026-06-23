@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
 import {
@@ -33,6 +33,7 @@ import { computeTotals } from '@/lib/totals';
 import { formatCurrency, toInputDate } from '@/lib/format';
 import { TEMPLATES } from '@/pdf/registry';
 import { cn } from '@/lib/cn';
+import type { AiInvoiceDraft } from '@/components/AiInvoiceDialog';
 
 type Kind = InvoiceKind;
 type TaxMode = 'intra' | 'inter' | 'none';
@@ -86,10 +87,13 @@ function emptyItem(): FormItem {
 
 export default function InvoiceBuilderPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const { id } = useParams<{ id?: string }>();
   const [search] = useSearchParams();
   const initialKind = (search.get('kind') as Kind) ?? 'invoice';
+  const aiDraft = (location.state as { aiDraft?: AiInvoiceDraft } | null)?.aiDraft ?? null;
+  const aiAppliedRef = useRef(false);
 
   const customersQuery = useQuery({
     queryKey: ['customers'],
@@ -196,6 +200,84 @@ export default function InvoiceBuilderPage() {
       form.setValue('terms', companyQuery.data.defaultTerms ?? '');
     }
   }, [companyQuery.data, form, id]);
+
+  const createCustomerForDraft = useMutation({
+    mutationFn: async (party: AiInvoiceDraft['customer']) => {
+      const res = await api.post<{ customer: Customer }>('/customers', {
+        name: party.name,
+        phone: party.phone ?? '',
+        email: party.email ?? '',
+        gstNumber: party.gstNumber ?? '',
+        city: party.city ?? '',
+      });
+      return res.data.customer;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['customers'] }),
+  });
+
+  useEffect(() => {
+    if (id) return;
+    if (!aiDraft || aiAppliedRef.current) return;
+    if (!customersQuery.data) return;
+    aiAppliedRef.current = true;
+
+    const applyDraft = async () => {
+      let customerId = aiDraft.matchedCustomerId ?? '';
+
+      if (!customerId && aiDraft.customer?.name) {
+        try {
+          const c = await createCustomerForDraft.mutateAsync(aiDraft.customer);
+          customerId = c._id;
+        } catch {
+          toast.error('Could not auto-create the customer — pick one manually.');
+        }
+      }
+
+      const today = new Date();
+      const due = new Date(today);
+      due.setDate(due.getDate() + (aiDraft.dueDateOffsetDays ?? 7));
+
+      form.reset({
+        kind: aiDraft.kind ?? 'invoice',
+        customerId,
+        number: '',
+        issueDate: toInputDate(today),
+        dueDate: toInputDate(due),
+        currency: aiDraft.currency || 'INR',
+        template: 'heritage',
+        taxMode: aiDraft.items.some((it) => (it.taxPercent ?? 0) > 0) ? 'intra' : 'none',
+        notes: aiDraft.notes ?? '',
+        terms: companyQuery.data?.defaultTerms ?? '',
+        items: aiDraft.items.length
+          ? aiDraft.items.map((it) => ({
+              description: it.description,
+              hsnCode: '',
+              quantity: Number(it.quantity) || 1,
+              unit: it.unit || 'pax',
+              rate: Number(it.rate) || 0,
+              taxPercent: Number(it.taxPercent) || 0,
+              discountPercent: aiDraft.discountPercent ?? 0,
+            }))
+          : [emptyItem()],
+        travel: {
+          packageName: '',
+          destination: '',
+          startDate: '',
+          endDate: '',
+          adults: 0,
+          children: 0,
+          hotel: '',
+          flight: '',
+          vehicle: '',
+        },
+      });
+
+      toast.success('AI draft loaded — review the items and save.');
+      navigate(location.pathname + (location.search ?? ''), { replace: true, state: {} });
+    };
+
+    applyDraft();
+  }, [aiDraft, customersQuery.data, companyQuery.data, id, form, navigate, location.pathname, location.search, createCustomerForDraft]);
 
   const items = useFieldArray({ control: form.control, name: 'items' });
   const watchedItems = form.watch('items');

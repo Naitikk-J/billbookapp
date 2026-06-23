@@ -32,6 +32,7 @@ export interface Company {
   defaultTerms?: string;
   invoicePrefix?: string;
   quotePrefix?: string;
+  geminiApiKey?: string;
 }
 
 export interface Customer {

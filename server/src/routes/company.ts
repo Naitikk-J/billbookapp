@@ -35,6 +35,7 @@ const updateSchema = z
     defaultTerms: z.string().max(2000),
     invoicePrefix: z.string().max(20),
     quotePrefix: z.string().max(20),
+    geminiApiKey: z.string().max(200),
   })
   .partial();
 
