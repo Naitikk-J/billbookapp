@@ -29,12 +29,14 @@ Prereqs: Node 18.18+, a MongoDB Atlas connection string.
 ```bash
 npm install
 cp server/.env.example server/.env        # fill MONGODB_URI, JWT_SECRET, JWT_REFRESH_SECRET
-cp client/.env.example client/.env        # VITE_API_URL=http://localhost:5000/api
+cp client/.env.example client/.env        # VITE_API_URL=http://localhost:5050/api
 npm run dev
 ```
 
 - Client → http://localhost:5173
-- Server → http://localhost:5000/api/health
+- Server → http://localhost:5050/api/health
+
+> Note: macOS's AirPlay Receiver service occupies port 5000 by default, so the API runs on **5050** locally. You can change this in `server/.env` (`PORT`) and `client/.env` (`VITE_API_URL`).
 
 ## Deploying to Vercel
 
