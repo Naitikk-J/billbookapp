@@ -406,6 +406,15 @@ export default function InvoiceBuilderPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
+                <div className="hidden gap-2 px-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:grid md:grid-cols-[minmax(0,_2.4fr)_88px_88px_88px_88px_88px_44px]">
+                  <span>Description</span>
+                  <span>Qty</span>
+                  <span>Unit</span>
+                  <span>Rate</span>
+                  <span>Tax %</span>
+                  <span>Disc %</span>
+                  <span className="sr-only">Actions</span>
+                </div>
                 {items.fields.map((field, index) => (
                   <div
                     key={field.id}
