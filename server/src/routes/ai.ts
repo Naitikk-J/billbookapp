@@ -92,25 +92,42 @@ router.post(
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: env.geminiModel,
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: {
-        responseMimeType: 'application/json',
-        // @ts-expect-error responseSchema typing not exported on older SDK versions
-        responseSchema: invoiceJsonSchema,
-        temperature: 0.2,
-      },
-    });
 
-    let parsed: Record<string, unknown>;
-    try {
-      const result = await model.generateContent(req.body.prompt);
-      const text = result.response.text();
-      parsed = JSON.parse(text);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw ApiError.badRequest(`Gemini call failed: ${message}`);
+    const seen = new Set<string>();
+    const modelCandidates = [
+      env.geminiModel,
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
+      'gemini-2.0-flash',
+    ].filter((m): m is string => Boolean(m) && !seen.has(m) && (seen.add(m), true));
+
+    let parsed: Record<string, unknown> | null = null;
+    let lastError = '';
+    for (const modelName of modelCandidates) {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: SYSTEM_PROMPT,
+        generationConfig: {
+          responseMimeType: 'application/json',
+          // @ts-expect-error responseSchema typing not exported on older SDK versions
+          responseSchema: invoiceJsonSchema,
+          temperature: 0.2,
+        },
+      });
+      try {
+        const result = await model.generateContent(req.body.prompt);
+        parsed = JSON.parse(result.response.text());
+        break;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        lastError = message;
+        const retryable = /404|not found|unsupported|not supported|deprecat/i.test(message);
+        if (!retryable) break;
+      }
+    }
+
+    if (!parsed) {
+      throw ApiError.badRequest(`Gemini call failed: ${lastError || 'unknown error'}`);
     }
 
     const customerObj = (parsed.customer ?? {}) as {

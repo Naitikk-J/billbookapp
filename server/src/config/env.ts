@@ -23,7 +23,7 @@ export const env = {
     .map((s) => s.trim())
     .filter(Boolean),
   geminiApiKey: process.env.GEMINI_API_KEY ?? '',
-  geminiModel: process.env.GEMINI_MODEL ?? 'gemini-1.5-flash',
+  geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
 } as const;
 
 export const isProd = env.nodeEnv === 'production';
