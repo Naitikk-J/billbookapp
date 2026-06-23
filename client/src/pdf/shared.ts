@@ -4,32 +4,24 @@ let registered = false;
 
 export function ensureFonts() {
   if (registered) return;
-  Font.register({
-    family: 'Inter',
-    fonts: [
-      {
-        src: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIw2boKoduKmMEVuLyfMZhrib2Bg-4.ttf',
-        fontWeight: 400,
-      },
-      {
-        src: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIw2boKoduKmMEVuFuYMZhrib2Bg-4.ttf',
-        fontWeight: 500,
-      },
-      {
-        src: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIw2boKoduKmMEVuGKYMZhrib2Bg-4.ttf',
-        fontWeight: 600,
-      },
-      {
-        src: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIw2boKoduKmMEVuI6fMZhrib2Bg-4.ttf',
-        fontWeight: 700,
-      },
-      {
-        src: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50ojIw2boKoduKmMEVuFuiMZhrib2Bg-4.ttf',
-        fontWeight: 800,
-      },
-    ],
-  });
   registered = true;
+  if (typeof window === 'undefined') return;
+  try {
+    Font.registerHyphenationCallback((word) => [word]);
+    const origin = window.location.origin;
+    Font.register({
+      family: 'Inter',
+      fonts: [
+        { src: `${origin}/fonts/Inter-Regular.otf`, fontWeight: 400 },
+        { src: `${origin}/fonts/Inter-Medium.otf`, fontWeight: 500 },
+        { src: `${origin}/fonts/Inter-SemiBold.otf`, fontWeight: 600 },
+        { src: `${origin}/fonts/Inter-Bold.otf`, fontWeight: 700 },
+        { src: `${origin}/fonts/Inter-ExtraBold.otf`, fontWeight: 800 },
+      ],
+    });
+  } catch (err) {
+    console.warn('[pdf] font registration failed, falling back to Helvetica', err);
+  }
 }
 
 export function fmt(amount: number, currency = 'INR'): string {

@@ -1,3 +1,4 @@
+import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Svg, Path, Image } from '@react-pdf/renderer';
 import type { Company, Invoice } from '@/lib/types';
 import { ensureFonts, fmt, fmtDateShort, inrInWords } from './shared';
