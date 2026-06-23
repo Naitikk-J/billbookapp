@@ -37,6 +37,23 @@ export function toInputDate(value?: string | Date | null): string {
   return d.toISOString().slice(0, 10);
 }
 
+export function toInputDateTime(value?: string | Date | null): string {
+  const d = value ? (typeof value === 'string' ? new Date(value) : value) : new Date();
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
+export function fromInputDateTime(value: string): string {
+  if (!value) return new Date().toISOString();
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return new Date().toISOString();
+  return d.toISOString();
+}
+
 export function initials(name: string): string {
   return name
     .split(/\s+/)

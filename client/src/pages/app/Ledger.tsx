@@ -1,15 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { pdf } from '@react-pdf/renderer';
 import { toast } from 'sonner';
 import {
   ArrowDown,
   ArrowUp,
   BookOpen,
+  Download,
   Loader2,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -18,13 +21,16 @@ import {
 
 import { api, apiError } from '@/lib/api';
 import type {
+  Company,
   Customer,
   LedgerAccount,
   LedgerCustomerDetail,
+  LedgerEntry,
   LedgerEntryKind,
   LedgerEntryMethod,
   LedgerSummary,
 } from '@/lib/types';
+import { LedgerStatement } from '@/pdf/LedgerStatement';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -41,7 +47,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/cn';
-import { formatCurrency, formatDate, initials, toInputDate } from '@/lib/format';
+import {
+  formatCurrency,
+  formatDate,
+  fromInputDateTime,
+  initials,
+  toInputDateTime,
+} from '@/lib/format';
 
 type AccountKind = 'customer' | 'supplier';
 
@@ -52,9 +64,14 @@ const entrySchema = z.object({
   amount: z.coerce.number().positive('Amount must be greater than 0'),
   note: z.string().max(500).optional().default(''),
   method: z.enum(['cash', 'upi', 'bank', 'card', 'cheque', 'other']).default('cash'),
-  date: z.string().optional(),
+  date: z.string().min(1, 'Pick a date and time'),
 });
 type EntryValues = z.infer<typeof entrySchema>;
+
+type EntryDialogState =
+  | { mode: 'create'; kind: LedgerEntryKind }
+  | { mode: 'edit'; entry: LedgerEntry }
+  | null;
 
 const newPartySchema = z.object({
   name: z.string().min(1, 'Required'),
@@ -72,9 +89,18 @@ export default function LedgerPage() {
   const [tab, setTab] = useState<AccountKind>('customer');
   const [query, setQuery] = useState('');
   const [addPartyOpen, setAddPartyOpen] = useState(false);
-  const [entryDialog, setEntryDialog] = useState<LedgerEntryKind | null>(null);
+  const [entryDialog, setEntryDialog] = useState<EntryDialogState>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const qc = useQueryClient();
+
+  const company = useQuery({
+    queryKey: ['company'],
+    queryFn: async () => {
+      const res = await api.get<{ company: Company }>('/company');
+      return res.data.company;
+    },
+  });
 
   const summary = useQuery({
     queryKey: ['ledger-summary', tab],
@@ -108,7 +134,7 @@ export default function LedgerPage() {
       if (!selectedId) throw new Error('Select a party first');
       const payload = {
         ...values,
-        date: values.date ? new Date(values.date).toISOString() : undefined,
+        date: fromInputDateTime(values.date),
       };
       await api.post(`/ledger/${selectedId}/entries`, payload);
     },
@@ -117,6 +143,23 @@ export default function LedgerPage() {
       qc.invalidateQueries({ queryKey: ['ledger-detail', selectedId] });
       setEntryDialog(null);
       toast.success('Entry recorded');
+    },
+    onError: (err) => toast.error(apiError(err)),
+  });
+
+  const updateEntry = useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: EntryValues }) => {
+      const payload = {
+        ...values,
+        date: fromInputDateTime(values.date),
+      };
+      await api.patch(`/ledger/entries/${id}`, payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+      qc.invalidateQueries({ queryKey: ['ledger-detail', selectedId] });
+      setEntryDialog(null);
+      toast.success('Entry updated');
     },
     onError: (err) => toast.error(apiError(err)),
   });
@@ -132,6 +175,42 @@ export default function LedgerPage() {
     },
     onError: (err) => toast.error(apiError(err)),
   });
+
+  async function handleDownload() {
+    if (!detail.data) return;
+    setDownloading(true);
+    try {
+      const generatedAt = new Date();
+      const blob = await pdf(
+        <LedgerStatement
+          company={company.data ?? null}
+          detail={detail.data}
+          generatedAt={generatedAt}
+        />
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const slug = detail.data.customer.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      const stamp = generatedAt
+        .toISOString()
+        .replace(/[:T]/g, '-')
+        .slice(0, 16);
+      a.href = url;
+      a.download = `ledger-${slug || 'party'}-${stamp}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Statement downloaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not generate PDF');
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const addParty = useMutation({
     mutationFn: async (values: NewPartyValues) => {
@@ -279,11 +358,14 @@ export default function LedgerPage() {
               tabLabel={tabLabel}
               youGetLabel={youGetLabel}
               youGiveLabel={youGiveLabel}
-              onAddPayment={() => setEntryDialog('payment')}
-              onAddCredit={() => setEntryDialog('credit')}
+              onAddPayment={() => setEntryDialog({ mode: 'create', kind: 'payment' })}
+              onAddCredit={() => setEntryDialog({ mode: 'create', kind: 'credit' })}
+              onEditEntry={(entry) => setEntryDialog({ mode: 'edit', entry })}
               onDeleteEntry={(id) => {
                 if (confirm('Remove this entry?')) deleteEntry.mutate(id);
               }}
+              onDownload={handleDownload}
+              downloading={downloading}
               deleting={deleteEntry.isPending}
             />
           ) : null}
@@ -299,14 +381,14 @@ export default function LedgerPage() {
       />
 
       <EntryDialog
-        open={entryDialog !== null}
-        kind={entryDialog ?? 'payment'}
+        state={entryDialog}
         onOpenChange={(o) => {
           if (!o) setEntryDialog(null);
         }}
         partyName={detail.data?.customer.name ?? ''}
-        onSubmit={(v) => addEntry.mutate(v)}
-        saving={addEntry.isPending}
+        onCreate={(v) => addEntry.mutate(v)}
+        onUpdate={(id, v) => updateEntry.mutate({ id, values: v })}
+        saving={addEntry.isPending || updateEntry.isPending}
       />
     </div>
   );
@@ -375,7 +457,10 @@ function DetailPanel({
   youGiveLabel,
   onAddPayment,
   onAddCredit,
+  onEditEntry,
   onDeleteEntry,
+  onDownload,
+  downloading,
   deleting,
 }: {
   detail: LedgerCustomerDetail;
@@ -384,7 +469,10 @@ function DetailPanel({
   youGiveLabel: string;
   onAddPayment: () => void;
   onAddCredit: () => void;
+  onEditEntry: (entry: LedgerEntry) => void;
   onDeleteEntry: (id: string) => void;
+  onDownload: () => void;
+  downloading: boolean;
   deleting: boolean;
 }) {
   const grouped = useMemo(() => {
@@ -404,7 +492,7 @@ function DetailPanel({
   return (
     <div className="flex h-full min-h-[480px] flex-col">
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-border p-5">
+      <div className="flex flex-col gap-3 border-b border-border p-5 md:flex-row md:items-start md:justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-royal-500 to-emerald-500 text-base font-semibold text-white">
             {initials(detail.customer.name)}
@@ -418,23 +506,48 @@ function DetailPanel({
             </p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-            {positive ? `${youGetLabel} (Due)` : negative ? `${youGiveLabel} (Advance)` : 'Balance'}
-          </p>
-          <p
-            className={cn(
-              'font-display text-2xl font-bold',
-              positive && 'text-destructive',
-              negative && 'text-emerald-500'
-            )}
+        <div className="flex items-start justify-between gap-4 md:justify-end">
+          <div className="text-right">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              {positive
+                ? `${youGetLabel} (Due)`
+                : negative
+                  ? `${youGiveLabel} (Advance)`
+                  : 'Balance'}
+            </p>
+            <p
+              className={cn(
+                'font-display text-2xl font-bold',
+                positive && 'text-destructive',
+                negative && 'text-emerald-500'
+              )}
+            >
+              {positive
+                ? formatCurrency(balance)
+                : negative
+                  ? `+${formatCurrency(Math.abs(balance))}`
+                  : formatCurrency(0)}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onDownload}
+            disabled={downloading || detail.entries.length === 0}
+            title={
+              detail.entries.length === 0
+                ? 'No transactions to download yet'
+                : 'Download timestamped PDF statement'
+            }
           >
-            {positive
-              ? formatCurrency(balance)
-              : negative
-                ? `+${formatCurrency(Math.abs(balance))}`
-                : formatCurrency(0)}
-          </p>
+            {downloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">PDF</span>
+          </Button>
         </div>
       </div>
 
@@ -458,6 +571,7 @@ function DetailPanel({
                     <EntryRow
                       key={e._id}
                       entry={e}
+                      onEdit={() => onEditEntry(e)}
                       onDelete={() => onDeleteEntry(e._id)}
                       deleting={deleting}
                     />
@@ -492,14 +606,23 @@ function DetailPanel({
 
 function EntryRow({
   entry,
+  onEdit,
   onDelete,
   deleting,
 }: {
   entry: LedgerCustomerDetail['entries'][number];
+  onEdit: () => void;
   onDelete: () => void;
   deleting: boolean;
 }) {
   const isPayment = entry.kind === 'payment';
+  const d = new Date(entry.date);
+  const timeLabel = d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const dateLabel = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
   return (
     <div
       className={cn(
@@ -518,7 +641,12 @@ function EntryRow({
         {isPayment ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
       </span>
       <div className="flex-1 min-w-0">
-        <p className={cn('font-display text-base font-semibold', isPayment ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive')}>
+        <p
+          className={cn(
+            'font-display text-base font-semibold',
+            isPayment ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
+          )}
+        >
           {isPayment ? '' : '+ '}
           {formatCurrency(entry.amount)}
         </p>
@@ -527,70 +655,145 @@ function EntryRow({
           {entry.note ? ` · ${entry.note}` : ''}
         </p>
       </div>
-      <span className="text-xs text-muted-foreground">
-        {new Date(entry.date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-      </span>
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={deleting}
-        className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-destructive group-hover:opacity-100"
-        aria-label="Delete entry"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      <div className="flex flex-col items-end text-right text-xs text-muted-foreground">
+        <span className="font-medium text-foreground/80">{timeLabel}</span>
+        <span>{dateLabel}</span>
+      </div>
+      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Edit entry"
+          title="Edit entry"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+          aria-label="Delete entry"
+          title="Delete entry"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
 
 function EntryDialog({
-  open,
+  state,
   onOpenChange,
-  kind,
   partyName,
-  onSubmit,
+  onCreate,
+  onUpdate,
   saving,
 }: {
-  open: boolean;
+  state: EntryDialogState;
   onOpenChange: (o: boolean) => void;
-  kind: LedgerEntryKind;
   partyName: string;
-  onSubmit: (values: EntryValues) => void;
+  onCreate: (values: EntryValues) => void;
+  onUpdate: (id: string, values: EntryValues) => void;
   saving: boolean;
 }) {
+  const open = state !== null;
+  const isEdit = state?.mode === 'edit';
+  const kind: LedgerEntryKind = state
+    ? state.mode === 'create'
+      ? state.kind
+      : state.entry.kind
+    : 'payment';
   const isPayment = kind === 'payment';
-  const form = useForm<EntryValues>({
-    resolver: zodResolver(entrySchema),
-    values: {
-      kind,
+
+  const defaults: EntryValues = useMemo(() => {
+    if (state?.mode === 'edit') {
+      return {
+        kind: state.entry.kind,
+        amount: state.entry.amount as unknown as number,
+        note: state.entry.note ?? '',
+        method: (state.entry.method ?? 'cash') as LedgerEntryMethod,
+        date: toInputDateTime(state.entry.date),
+      };
+    }
+    return {
+      kind: state?.mode === 'create' ? state.kind : 'payment',
       amount: 0 as unknown as number,
       note: '',
       method: 'cash',
-      date: toInputDate(new Date()),
-    },
+      date: toInputDateTime(new Date()),
+    };
+  }, [state]);
+
+  const form = useForm<EntryValues>({
+    resolver: zodResolver(entrySchema),
+    defaultValues: defaults,
   });
+
+  useEffect(() => {
+    if (open) form.reset(defaults);
+  }, [open, defaults, form]);
+
+  function submit(values: EntryValues) {
+    if (state?.mode === 'edit') {
+      onUpdate(state.entry._id, values);
+    } else {
+      onCreate(values);
+    }
+  }
+
+  const title = isEdit
+    ? `Edit ${isPayment ? 'payment' : 'credit'} — ${partyName}`
+    : `${isPayment ? 'Payment received' : 'Credit given'} — ${partyName}`;
+  const description = isEdit
+    ? 'Update the amount, time, method or note. The running balance recalculates automatically.'
+    : isPayment
+      ? 'Record money received from this party. This reduces what they owe.'
+      : 'Record money given / goods supplied. This adds to what they owe.';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {isPayment ? 'Payment received' : 'Credit given'} — {partyName}
-          </DialogTitle>
-          <DialogDescription>
-            {isPayment
-              ? 'Record money received from this party. This reduces what they owe.'
-              : 'Record money given / goods supplied. This adds to what they owe.'}
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(submit)} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Amount" error={form.formState.errors.amount?.message}>
               <Input type="number" step="0.01" placeholder="0" {...form.register('amount')} />
             </Field>
-            <Field label="Date">
-              <Input type="date" {...form.register('date')} />
+            <Field label="Date & time" error={form.formState.errors.date?.message}>
+              <div className="flex gap-2">
+                <Input
+                  type="datetime-local"
+                  step="60"
+                  {...form.register('date')}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => form.setValue('date', toInputDateTime(new Date()))}
+                  title="Set to current local time"
+                >
+                  Now
+                </Button>
+              </div>
             </Field>
+            {isEdit ? (
+              <Field label="Type" className="md:col-span-2">
+                <select
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  {...form.register('kind')}
+                >
+                  <option value="payment">Payment (Received)</option>
+                  <option value="credit">Credit (Given)</option>
+                </select>
+              </Field>
+            ) : null}
             <Field label="Method" className="md:col-span-2">
               <select
                 className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -604,7 +807,11 @@ function EntryDialog({
               </select>
             </Field>
             <Field label="Note" className="md:col-span-2">
-              <Textarea rows={2} placeholder="Optional reference, invoice no, etc." {...form.register('note')} />
+              <Textarea
+                rows={2}
+                placeholder="Optional reference, invoice no, etc."
+                {...form.register('note')}
+              />
             </Field>
           </div>
           <DialogFooter>
@@ -616,10 +823,20 @@ function EntryDialog({
               variant="primary"
               disabled={saving}
               className={cn(
-                isPayment ? 'bg-emerald-500 hover:bg-emerald-500/90' : 'bg-destructive hover:bg-destructive/90'
+                isPayment
+                  ? 'bg-emerald-500 hover:bg-emerald-500/90'
+                  : 'bg-destructive hover:bg-destructive/90'
               )}
             >
-              {saving ? <Loader2 className="animate-spin" /> : isPayment ? 'Record payment' : 'Record credit'}
+              {saving ? (
+                <Loader2 className="animate-spin" />
+              ) : isEdit ? (
+                'Save changes'
+              ) : isPayment ? (
+                'Record payment'
+              ) : (
+                'Record credit'
+              )}
             </Button>
           </DialogFooter>
         </form>

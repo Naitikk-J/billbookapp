@@ -157,6 +157,36 @@ router.post(
   })
 );
 
+const entryUpdateSchema = z.object({
+  kind: z.enum(['payment', 'credit']).optional(),
+  amount: z.number().positive().optional(),
+  note: z.string().max(500).optional(),
+  method: z.enum(['cash', 'upi', 'bank', 'card', 'cheque', 'other']).optional(),
+  date: z.string().optional(),
+});
+
+router.patch(
+  '/entries/:id',
+  validate(entryUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const entry = await LedgerEntry.findOne({
+      _id: req.params.id,
+      companyId: req.user!.companyId,
+    });
+    if (!entry) throw ApiError.notFound('Entry not found');
+
+    const body = req.body as z.infer<typeof entryUpdateSchema>;
+    if (body.kind !== undefined) entry.kind = body.kind;
+    if (body.amount !== undefined) entry.amount = body.amount;
+    if (body.note !== undefined) entry.note = body.note;
+    if (body.method !== undefined) entry.method = body.method;
+    if (body.date !== undefined) entry.date = new Date(body.date);
+
+    await entry.save();
+    res.json({ entry });
+  })
+);
+
 router.delete(
   '/entries/:id',
   asyncHandler(async (req, res) => {
