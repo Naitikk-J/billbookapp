@@ -360,7 +360,14 @@ export default function InvoiceBuilderPage() {
       toast.success(id ? 'Invoice updated' : 'Invoice created');
       navigate(`/app/invoices/${invoice._id}`);
     },
-    onError: (err) => toast.error(apiError(err)),
+    onError: (err) => {
+      const message = apiError(err);
+      const details =
+        (err as { response?: { data?: unknown } } | undefined)?.response?.data ?? null;
+      // eslint-disable-next-line no-console
+      console.error('[invoice save failed]', { message, details, error: err });
+      toast.error(message, { duration: 10_000 });
+    },
   });
 
   function fillFromProduct(index: number, product: Product) {
