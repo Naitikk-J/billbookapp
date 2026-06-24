@@ -528,10 +528,11 @@ export function HeritageTemplate({
               <Text style={styles.tableCellNo}>{idx + 1}</Text>
               <View style={styles.tableCellItem}>
                 <Text>{item.description}</Text>
-                {item.quantity > 1 || item.taxPercent ? (
+                {item.quantity > 1 || item.taxPercent || item.hsnCode ? (
                   <Text style={styles.tableSubText}>
                     {item.quantity} {item.unit || ''}
                     {item.taxPercent ? ` · GST ${item.taxPercent}%` : ''}
+                    {item.hsnCode ? ` · ${item.hsnCode}` : ''}
                   </Text>
                 ) : null}
               </View>
