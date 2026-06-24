@@ -292,6 +292,35 @@ export default function InvoiceBuilderPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      if (!values.customerId) {
+        throw new Error('Pick a customer before saving.');
+      }
+
+      const cleanedItems = values.items
+        .map((it) => ({
+          description: (it.description ?? '').trim(),
+          hsnCode: it.hsnCode ?? '',
+          quantity: Number(it.quantity),
+          unit: it.unit || 'pax',
+          rate: Number(it.rate),
+          taxPercent: Number(it.taxPercent ?? 0),
+          discountPercent: Number(it.discountPercent ?? 0),
+        }))
+        .filter(
+          (it) =>
+            it.description.length > 0 &&
+            Number.isFinite(it.quantity) &&
+            it.quantity > 0 &&
+            Number.isFinite(it.rate) &&
+            it.rate >= 0
+        );
+
+      if (cleanedItems.length === 0) {
+        throw new Error(
+          'Add at least one line item with a description, quantity > 0, and a rate.'
+        );
+      }
+
       const payload = {
         kind: values.kind,
         customerId: values.customerId,
@@ -302,17 +331,7 @@ export default function InvoiceBuilderPage() {
         taxMode: values.taxMode,
         notes: values.notes,
         terms: values.terms,
-        items: values.items
-          .filter((it) => it.description && it.quantity > 0)
-          .map((it) => ({
-            description: it.description,
-            hsnCode: it.hsnCode,
-            quantity: Number(it.quantity),
-            unit: it.unit,
-            rate: Number(it.rate),
-            taxPercent: Number(it.taxPercent ?? 0),
-            discountPercent: Number(it.discountPercent ?? 0),
-          })),
+        items: cleanedItems,
         travelDetails: {
           packageName: values.travel.packageName,
           destination: values.travel.destination,
@@ -322,8 +341,8 @@ export default function InvoiceBuilderPage() {
           endDate: values.travel.endDate
             ? new Date(values.travel.endDate).toISOString()
             : undefined,
-          adults: Number(values.travel.adults) || 0,
-          children: Number(values.travel.children) || 0,
+          adults: Math.max(0, Math.floor(Number(values.travel.adults) || 0)),
+          children: Math.max(0, Math.floor(Number(values.travel.children) || 0)),
           hotel: values.travel.hotel,
           flight: values.travel.flight,
           vehicle: values.travel.vehicle,

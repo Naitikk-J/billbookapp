@@ -67,11 +67,77 @@ api.interceptors.response.use(
   }
 );
 
+interface ApiErrorPayload {
+  error?: {
+    message?: string;
+    details?: {
+      fields?: Array<{ path?: string; message?: string }>;
+      fieldErrors?: Record<string, string[]>;
+      formErrors?: string[];
+    } | null;
+  };
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  customerId: 'Customer',
+  items: 'Line items',
+  issueDate: 'Issue date',
+  dueDate: 'Due date',
+  notes: 'Notes',
+  terms: 'Terms',
+  taxMode: 'Tax mode',
+  travelDetails: 'Travel details',
+  description: 'description',
+  quantity: 'quantity',
+  rate: 'rate',
+  taxPercent: 'tax %',
+  discountPercent: 'discount %',
+  unit: 'unit',
+  hsnCode: 'HSN code',
+};
+
+function humanizePath(path: string): string {
+  if (!path) return '';
+  return path
+    .split('.')
+    .map((seg) => {
+      if (/^\d+$/.test(seg)) return `#${Number(seg) + 1}`;
+      return FIELD_LABELS[seg] ?? seg;
+    })
+    .join(' → ');
+}
+
 export function apiError(err: unknown, fallback = 'Something went wrong'): string {
-  if (axios.isAxiosError(err)) {
-    const msg = (err.response?.data as { error?: { message?: string } } | undefined)?.error?.message;
-    return msg ?? err.message ?? fallback;
+  if (!axios.isAxiosError(err)) {
+    if (err instanceof Error) return err.message;
+    return fallback;
   }
-  if (err instanceof Error) return err.message;
-  return fallback;
+
+  const payload = err.response?.data as ApiErrorPayload | undefined;
+  const baseMessage = payload?.error?.message ?? err.message ?? fallback;
+
+  const fields = payload?.error?.details?.fields ?? [];
+  if (fields.length > 0) {
+    const parts = fields
+      .slice(0, 3)
+      .map((f) => {
+        const label = humanizePath(f.path ?? '');
+        return label ? `${label}: ${f.message ?? 'invalid'}` : (f.message ?? 'invalid');
+      })
+      .filter(Boolean);
+    const more = fields.length > parts.length ? ` (+${fields.length - parts.length} more)` : '';
+    if (parts.length > 0) {
+      return `${baseMessage.replace(/ —.*$/, '')} — ${parts.join('; ')}${more}`;
+    }
+  }
+
+  const flatFieldErrors = payload?.error?.details?.fieldErrors;
+  if (flatFieldErrors && Object.keys(flatFieldErrors).length > 0) {
+    const parts = Object.entries(flatFieldErrors)
+      .slice(0, 3)
+      .map(([k, msgs]) => `${humanizePath(k)}: ${(msgs ?? []).join(', ') || 'invalid'}`);
+    return `${baseMessage} — ${parts.join('; ')}`;
+  }
+
+  return baseMessage;
 }
