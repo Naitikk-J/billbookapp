@@ -14,7 +14,7 @@ router.use(requireAuth, requireCompany);
 
 const lineItemSchema = z.object({
   description: z.string().min(1).max(500),
-  hsnCode: z.string().max(40).optional().default(''),
+  hsnCode: z.string().max(200).optional().default(''),
   quantity: z.number().min(0),
   unit: z.string().max(40).optional().default('pax'),
   rate: z.number().min(0),

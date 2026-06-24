@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import {
   ArrowLeft,
   Eye,
@@ -280,12 +280,15 @@ export default function InvoiceBuilderPage() {
   }, [aiDraft, customersQuery.data, companyQuery.data, id, form, navigate, location.pathname, location.search, createCustomerForDraft]);
 
   const items = useFieldArray({ control: form.control, name: 'items' });
-  const watchedItems = form.watch('items');
-  const taxMode = form.watch('taxMode');
-  const currency = form.watch('currency');
-  const template = form.watch('template');
+  const watchedItems = useWatch({ control: form.control, name: 'items' });
+  const taxMode = useWatch({ control: form.control, name: 'taxMode' });
+  const currency = useWatch({ control: form.control, name: 'currency' });
+  const template = useWatch({ control: form.control, name: 'template' });
 
-  const totals = useMemo(() => computeTotals(watchedItems ?? [], taxMode), [watchedItems, taxMode]);
+  const totals = useMemo(
+    () => computeTotals(watchedItems ?? [], taxMode ?? 'intra'),
+    [watchedItems, taxMode, items.fields.length]
+  );
 
   const customerOptions = customersQuery.data ?? [];
   const productOptions = productsQuery.data ?? [];
@@ -676,23 +679,38 @@ export default function InvoiceBuilderPage() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-start justify-between">
               <CardTitle>Totals</CardTitle>
+              <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                {taxMode === 'intra'
+                  ? 'CGST + SGST'
+                  : taxMode === 'inter'
+                    ? 'IGST'
+                    : 'No tax'}
+              </Badge>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <TotalRow label="Subtotal" value={formatCurrency(totals.subtotal, currency)} />
               {totals.discountTotal > 0 ? (
-                <TotalRow label="Discount" value={`− ${formatCurrency(totals.discountTotal, currency)}`} />
+                <TotalRow
+                  label="Discount"
+                  value={`− ${formatCurrency(totals.discountTotal, currency)}`}
+                />
               ) : null}
-              {totals.cgstTotal > 0 ? (
-                <TotalRow label="CGST" value={formatCurrency(totals.cgstTotal, currency)} />
-              ) : null}
-              {totals.sgstTotal > 0 ? (
-                <TotalRow label="SGST" value={formatCurrency(totals.sgstTotal, currency)} />
-              ) : null}
-              {totals.igstTotal > 0 ? (
+              <TotalRow label="Taxable" value={formatCurrency(totals.taxableTotal, currency)} />
+              {taxMode === 'intra' ? (
+                <>
+                  <TotalRow label="CGST" value={formatCurrency(totals.cgstTotal, currency)} />
+                  <TotalRow label="SGST" value={formatCurrency(totals.sgstTotal, currency)} />
+                </>
+              ) : taxMode === 'inter' ? (
                 <TotalRow label="IGST" value={formatCurrency(totals.igstTotal, currency)} />
-              ) : null}
+              ) : (
+                <TotalRow
+                  label="Tax"
+                  value={`No tax (${formatCurrency(0, currency)})`}
+                />
+              )}
               <div className="my-2 h-px bg-border" />
               <div className="flex items-center justify-between rounded-xl bg-navy-800 px-4 py-3 text-white">
                 <span className="text-xs uppercase tracking-wider text-white/60">Grand total</span>

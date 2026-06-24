@@ -233,7 +233,6 @@ export function TravelTemplate({ invoice, company }: { invoice: Invoice; company
               <View key={idx} style={[styles.tableRow, idx % 2 === 1 ? styles.rowAlt : {}]}>
                 <View style={styles.cellDesc}>
                   <Text style={{ fontWeight: 600 }}>{item.description}</Text>
-                  {item.hsnCode ? <Text style={styles.muted}>HSN {item.hsnCode}</Text> : null}
                 </View>
                 <Text style={styles.cellQty}>
                   {item.quantity} {item.unit}

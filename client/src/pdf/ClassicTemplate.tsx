@@ -157,7 +157,6 @@ export function ClassicTemplate({ invoice, company }: { invoice: Invoice; compan
             <View key={idx} style={styles.tableRow}>
               <View style={styles.cellDesc}>
                 <Text style={{ fontWeight: 600 }}>{item.description}</Text>
-                {item.hsnCode ? <Text style={styles.muted}>HSN {item.hsnCode}</Text> : null}
               </View>
               <Text style={styles.cellQty}>
                 {item.quantity} {item.unit}
