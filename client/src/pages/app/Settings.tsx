@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { Loader2, Save, Sparkles } from 'lucide-react';
+import { Loader2, PlaneTakeoff, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, apiError } from '@/lib/api';
@@ -150,6 +150,55 @@ export default function SettingsPage() {
                   autoComplete="off"
                   {...form.register('geminiApiKey')}
                 />
+              </Field>
+              {companyQuery.data?.geminiApiKeySet ? (
+                <p className="mt-2 text-xs text-emerald-500">
+                  Key on file. Leave the field blank to keep it unchanged.
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PlaneTakeoff className="h-4 w-4 text-emerald-500" /> Flight automation
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Connect Gmail so Safarmate can watch your inbox and keep the flight Kanban board in sync.
+                Use a Google{' '}
+                <a
+                  className="text-emerald-500 hover:underline"
+                  href="https://myaccount.google.com/apppasswords"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  App Password
+                </a>{' '}
+                (2FA must be on). Credentials are stored on your company record and never returned to the browser.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label="Gmail address">
+                <Input
+                  type="email"
+                  placeholder="ops@yourtravelco.com"
+                  autoComplete="off"
+                  {...form.register('gmailAddress')}
+                />
+              </Field>
+              <Field label="Gmail App Password">
+                <Input
+                  type="password"
+                  placeholder="16-char app password"
+                  autoComplete="off"
+                  {...form.register('gmailAppPassword')}
+                />
+                {companyQuery.data?.gmailAppPasswordSet ? (
+                  <p className="text-xs text-emerald-500">
+                    Password on file. Leave blank to keep it; type a new one to replace.
+                  </p>
+                ) : null}
               </Field>
             </CardContent>
           </Card>

@@ -51,7 +51,7 @@ export default function RegisterPage() {
           user: data.user,
         })
       );
-      toast.success('Welcome to InvoiceFlow Pro');
+      toast.success('Welcome to Safarmate Admin Portal');
       navigate('/app', { replace: true });
     },
     onError: (err) => toast.error(apiError(err, 'Registration failed')),

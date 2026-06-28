@@ -34,6 +34,9 @@ const companySchema = new Schema(
     quotePrefix: { type: String, default: 'QT-' },
     nextQuoteNumber: { type: Number, default: 1 },
     geminiApiKey: { type: String, default: '' },
+    gmailAddress: { type: String, default: '', lowercase: true, trim: true },
+    gmailAppPassword: { type: String, default: '' },
+    lastFlightSyncAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

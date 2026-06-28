@@ -61,7 +61,7 @@ export default function LoginPage() {
       subtitle="Sign in to manage invoices, customers, and your team."
       footer={
         <span>
-          New to InvoiceFlow? <Link to="/register" className="text-secondary hover:underline">Create an account</Link>
+          New to Safarmate? <Link to="/register" className="text-secondary hover:underline">Create an account</Link>
         </span>
       }
     >
@@ -108,11 +108,11 @@ export function AuthLayout({
         </div>
         <div className="relative z-10 max-w-md">
           <p className="font-display text-3xl font-bold leading-snug">
-            “We switched from BillBook to InvoiceFlow and cut our invoicing time in half. The PDFs alone are worth it.”
+            “Safarmate's flight board reads our inbox — every PNR, every delay, every gate change. Our ops team finally stopped switching tabs.”
           </p>
           <p className="mt-6 text-sm text-white/70">— Priya Sharma, Apex Holidays LLP</p>
         </div>
-        <div className="relative z-10 text-xs text-white/50">© {new Date().getFullYear()} InvoiceFlow Pro</div>
+        <div className="relative z-10 text-xs text-white/50">© {new Date().getFullYear()} Safarmate Admin Portal</div>
       </div>
       <div className="flex flex-col">
         <div className="flex items-center justify-between p-6 lg:hidden">

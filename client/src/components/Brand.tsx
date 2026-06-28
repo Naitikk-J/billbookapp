@@ -1,6 +1,14 @@
 import { cn } from '@/lib/cn';
 
-export function Brand({ className, size = 24 }: { className?: string; size?: number }) {
+export function Brand({
+  className,
+  size = 24,
+  variant = 'full',
+}: {
+  className?: string;
+  size?: number;
+  variant?: 'full' | 'compact';
+}) {
   return (
     <div className={cn('flex items-center gap-2.5', className)}>
       <span
@@ -12,6 +20,7 @@ export function Brand({ className, size = 24 }: { className?: string; size?: num
             'linear-gradient(135deg, #1E3A8A 0%, #2A5BFF 55%, #10B981 100%)',
         }}
       >
+        {/* Stylised paper plane mark */}
         <svg
           width={size}
           height={size}
@@ -20,17 +29,29 @@ export function Brand({ className, size = 24 }: { className?: string; size?: num
           xmlns="http://www.w3.org/2000/svg"
         >
           <path
-            d="M5 4.5h11.5L19 7v12.5a0.5 0.5 0 01-0.78.42L16 18.5l-2.22 1.42a0.5 0.5 0 01-0.56 0L11 18.5l-2.22 1.42a0.5 0.5 0 01-0.56 0L6 18.5l-2.22 1.42A0.5 0.5 0 013 19.5V6.5A2 2 0 015 4.5z"
+            d="M3.5 12.2L20 4.5l-4.4 16-4.4-5.6-4.6 3.4-.4-4.6-3-1.5z"
             stroke="white"
             strokeWidth="1.5"
             strokeLinejoin="round"
+            strokeLinecap="round"
           />
-          <path d="M8 9h8M8 12h6M8 15h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M20 4.5l-9 11" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </span>
-      <span className="font-display text-lg font-bold tracking-tight">
-        InvoiceFlow <span className="text-emerald-500">Pro</span>
-      </span>
+      {variant === 'full' ? (
+        <span className="flex flex-col leading-tight">
+          <span className="font-display text-lg font-bold tracking-tight">
+            Safarmate <span className="text-emerald-500">Admin</span>
+          </span>
+          <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Portal
+          </span>
+        </span>
+      ) : (
+        <span className="font-display text-lg font-bold tracking-tight">
+          Safarmate
+        </span>
+      )}
     </div>
   );
 }

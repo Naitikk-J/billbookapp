@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { Button } from './ui/button';
 
-const STORAGE_KEY = 'invoiceflow.theme';
+const STORAGE_KEY = 'safarmate.theme';
 
 type Theme = 'light' | 'dark';
 

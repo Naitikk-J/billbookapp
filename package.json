@@ -1,8 +1,8 @@
 {
-  "name": "invoiceflow-pro",
-  "version": "0.1.0",
+  "name": "safarmate-admin-portal",
+  "version": "0.2.0",
   "private": true,
-  "description": "InvoiceFlow Pro - premium invoice platform for travel & service businesses",
+  "description": "Safarmate Admin Portal — invoices, ledger, and live flight Kanban for travel agencies.",
   "workspaces": [
     "client",
     "server"

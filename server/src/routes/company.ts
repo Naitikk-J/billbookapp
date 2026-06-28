@@ -36,15 +36,34 @@ const updateSchema = z
     invoicePrefix: z.string().max(20),
     quotePrefix: z.string().max(20),
     geminiApiKey: z.string().max(200),
+    gmailAddress: z.string().email().or(z.literal('')),
+    gmailAppPassword: z.string().max(200),
   })
   .partial();
+
+function sanitize<T extends { toObject?: () => Record<string, unknown> } | Record<string, unknown>>(
+  doc: T
+): Record<string, unknown> {
+  const obj = (typeof (doc as { toObject?: unknown }).toObject === 'function'
+    ? (doc as { toObject: () => Record<string, unknown> }).toObject()
+    : (doc as Record<string, unknown>)) as Record<string, unknown>;
+  const gmail = (obj.gmailAppPassword as string | undefined) ?? '';
+  const gemini = (obj.geminiApiKey as string | undefined) ?? '';
+  return {
+    ...obj,
+    gmailAppPassword: gmail ? '••••••••' : '',
+    gmailAppPasswordSet: Boolean(gmail),
+    geminiApiKey: gemini ? '••••••••' : '',
+    geminiApiKeySet: Boolean(gemini),
+  };
+}
 
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const company = await Company.findById(req.user!.companyId);
     if (!company) throw ApiError.notFound('Company not found');
-    res.json({ company });
+    res.json({ company: sanitize(company) });
   })
 );
 
@@ -52,9 +71,13 @@ router.patch(
   '/',
   validate(updateSchema),
   asyncHandler(async (req, res) => {
-    const company = await Company.findByIdAndUpdate(req.user!.companyId, req.body, { new: true });
+    const body = req.body as Record<string, unknown>;
+    // ignore masked values coming back from the client
+    if (body.gmailAppPassword === '••••••••') delete body.gmailAppPassword;
+    if (body.geminiApiKey === '••••••••') delete body.geminiApiKey;
+    const company = await Company.findByIdAndUpdate(req.user!.companyId, body, { new: true });
     if (!company) throw ApiError.notFound('Company not found');
-    res.json({ company });
+    res.json({ company: sanitize(company) });
   })
 );
 

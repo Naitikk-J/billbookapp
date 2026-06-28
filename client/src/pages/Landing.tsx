@@ -76,7 +76,7 @@ const stats = [
 const faqs = [
   {
     q: 'Is this only for travel agencies?',
-    a: 'No — InvoiceFlow Pro works for any service business. We just go further than most tools when it comes to tour packages, visas, hotels, and transport billing.',
+    a: 'No — Safarmate works for any service business. We just go further than most tools when it comes to tour packages, visas, hotels, transport billing, and now flight ops via the live Kanban board.',
   },
   {
     q: 'Can I customize my invoice templates?',
@@ -463,7 +463,7 @@ function Footer() {
     <footer className="border-t border-border/60 py-10">
       <div className="container flex flex-col items-center justify-between gap-4 text-sm text-muted-foreground md:flex-row">
         <Brand size={20} />
-        <p>© {new Date().getFullYear()} InvoiceFlow Pro. Designed for travel & service businesses.</p>
+        <p>© {new Date().getFullYear()} Safarmate Admin Portal. Designed for travel & service businesses.</p>
         <div className="flex gap-6">
           <a className="hover:text-foreground" href="#">Privacy</a>
           <a className="hover:text-foreground" href="#">Terms</a>

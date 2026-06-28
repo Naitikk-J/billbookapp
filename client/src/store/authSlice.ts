@@ -1,7 +1,8 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { AuthUser } from '@/lib/types';
 
-const STORAGE_KEY = 'invoiceflow.auth';
+const STORAGE_KEY = 'safarmate.auth';
+const LEGACY_STORAGE_KEY = 'invoiceflow.auth';
 
 interface AuthState {
   accessToken: string | null;
@@ -12,7 +13,14 @@ interface AuthState {
 function readPersisted(): AuthState {
   if (typeof window === 'undefined') return { accessToken: null, refreshToken: null, user: null };
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    let raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) {
+        window.localStorage.setItem(STORAGE_KEY, raw);
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
     if (!raw) return { accessToken: null, refreshToken: null, user: null };
     const parsed = JSON.parse(raw) as AuthState;
     return {
@@ -59,7 +67,10 @@ const authSlice = createSlice({
       state.accessToken = null;
       state.refreshToken = null;
       state.user = null;
-      if (typeof window !== 'undefined') window.localStorage.removeItem(STORAGE_KEY);
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
     },
   },
 });

@@ -1,8 +1,18 @@
-# InvoiceFlow Pro
+# Safarmate Admin Portal
 
-A premium, modern invoice generation platform tailored for travel agencies, tour operators, visa consultants, hotels, and service businesses.
+The operations cockpit for travel agencies — invoices, ledger, customers, products, and a live **flight Kanban board** that watches your inbox and ingests ticket PDFs.
 
-> Status: MVP foundation — auth, customer/product CRUD, invoice builder, three production-grade PDF templates, dashboard, landing.
+> Status: MVP — auth, customer/product CRUD, invoice builder with four PDF templates, OKCredit-style ledger with PDF statements, AI-powered invoice drafting, and the new Flight Status board (Gmail IMAP sync + PDF parsing via Gemini).
+
+## Flight Status board
+
+- Kanban columns: Booked → Confirmed → Checked-in → Boarding → Delayed → Departed → Arrived → Cancelled / Missed.
+- **Sync inbox** pulls recent Gmail messages over IMAP (App Password, 2FA required) and Gemini extracts PNR, route, times and status. Existing cards update by PNR; unknown PNRs become new cards.
+- **Upload PDF** sends a ticket straight to Gemini for one-off cards (no email needed).
+- **Paste email** lets you forward an airline message manually when IMAP isn't connected.
+- Drag-and-drop powered by `@dnd-kit`.
+
+Add `GMAIL_ADDRESS` / Gmail App Password in Settings → Flight automation. Add `GEMINI_API_KEY` either company-wide in Settings → AI assistant or as a server env.
 
 ## Stack
 

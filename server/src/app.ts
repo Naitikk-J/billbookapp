@@ -16,6 +16,7 @@ import productRoutes from './routes/products';
 import invoiceRoutes from './routes/invoices';
 import ledgerRoutes from './routes/ledger';
 import aiRoutes from './routes/ai';
+import flightRoutes from './routes/flights';
 
 let initialized = false;
 
@@ -34,8 +35,8 @@ export function createApp(): Express {
       credentials: true,
     })
   );
-  app.use(express.json({ limit: '2mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+  app.use(express.json({ limit: '12mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '12mb' }));
   app.use(mongoSanitize());
   if (!isProd) app.use(morgan('dev'));
 
@@ -58,6 +59,7 @@ export function createApp(): Express {
   app.use('/api/invoices', invoiceRoutes);
   app.use('/api/ledger', ledgerRoutes);
   app.use('/api/ai', aiRoutes);
+  app.use('/api/flights', flightRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

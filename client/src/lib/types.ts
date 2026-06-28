@@ -33,6 +33,11 @@ export interface Company {
   invoicePrefix?: string;
   quotePrefix?: string;
   geminiApiKey?: string;
+  geminiApiKeySet?: boolean;
+  gmailAddress?: string;
+  gmailAppPassword?: string;
+  gmailAppPasswordSet?: boolean;
+  lastFlightSyncAt?: string | null;
 }
 
 export interface Customer {
@@ -187,6 +192,107 @@ export interface Invoice {
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type FlightStatus =
+  | 'booked'
+  | 'confirmed'
+  | 'checked_in'
+  | 'boarding'
+  | 'delayed'
+  | 'departed'
+  | 'arrived'
+  | 'cancelled'
+  | 'missed';
+
+export const FLIGHT_STATUSES: FlightStatus[] = [
+  'booked',
+  'confirmed',
+  'checked_in',
+  'boarding',
+  'delayed',
+  'departed',
+  'arrived',
+  'cancelled',
+  'missed',
+];
+
+export interface FlightPassenger {
+  name: string;
+  seat?: string;
+  cabin?: string;
+}
+
+export interface FlightHistoryEntry {
+  at: string;
+  kind: string;
+  message: string;
+}
+
+export interface Flight {
+  _id: string;
+  companyId: string;
+  customerId?: string | null;
+
+  pnr: string;
+  bookingReference?: string;
+  airline?: string;
+  airlineCode?: string;
+  flightNumber?: string;
+
+  fromCity?: string;
+  fromAirport?: string;
+  fromTerminal?: string;
+  toCity?: string;
+  toAirport?: string;
+  toTerminal?: string;
+
+  departureAt?: string | null;
+  arrivalAt?: string | null;
+  durationMinutes?: number | null;
+
+  passengers: FlightPassenger[];
+  cabinClass?: string;
+
+  status: FlightStatus;
+  statusNote?: string;
+  position: number;
+
+  source: 'manual' | 'email' | 'pdf';
+  sourceRef?: string;
+  emailSubject?: string;
+  emailFrom?: string;
+  emailDate?: string | null;
+  rawSnippet?: string;
+  lastEmailAt?: string | null;
+  pdfName?: string;
+
+  notes?: string;
+  color?: string;
+  tags?: string[];
+
+  history?: FlightHistoryEntry[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FlightBoard {
+  flights: Flight[];
+  board: Record<FlightStatus, Flight[]>;
+}
+
+export interface FlightSyncSummary {
+  scanned: number;
+  parsed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+}
+
+export interface FlightSyncResult {
+  summary: FlightSyncSummary;
+  errors: string[];
+  lastFlightSyncAt: string;
 }
 
 export interface DashboardStats {

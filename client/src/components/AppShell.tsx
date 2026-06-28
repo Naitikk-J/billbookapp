@@ -13,6 +13,7 @@ import {
   Search,
   BookOpen,
   Sparkles,
+  PlaneTakeoff,
 } from 'lucide-react';
 import { Brand } from './Brand';
 import { ThemeToggle } from './ThemeToggle';
@@ -33,6 +34,7 @@ import {
 
 const nav = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/app/flights', label: 'Flight status', icon: PlaneTakeoff, end: false },
   { to: '/app/invoices', label: 'Invoices', icon: FileText, end: false },
   { to: '/app/ledger', label: 'Ledger', icon: BookOpen, end: false },
   { to: '/app/customers', label: 'Customers', icon: Users, end: false },
@@ -144,7 +146,7 @@ export function AppShell() {
           <div className="relative flex-1 max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
-              placeholder="Search invoices, customers, destinations…"
+              placeholder="Search flights, invoices, customers…"
               className="h-10 w-full rounded-lg border border-border bg-muted/30 pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-ring focus:bg-background"
             />
           </div>

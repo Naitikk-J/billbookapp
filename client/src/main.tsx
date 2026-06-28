@@ -11,7 +11,11 @@ import App from './App';
 
 import './index.css';
 
-const stored = typeof window !== 'undefined' ? window.localStorage.getItem('invoiceflow.theme') : null;
+const stored =
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem('safarmate.theme') ??
+      window.localStorage.getItem('invoiceflow.theme')
+    : null;
 if (stored === 'light') document.documentElement.classList.remove('dark');
 else document.documentElement.classList.add('dark');
 

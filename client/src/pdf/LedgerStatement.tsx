@@ -274,8 +274,8 @@ export function LedgerStatement({ company, detail, generatedAt }: LedgerStatemen
   return (
     <Document
       title={`Ledger statement — ${detail.customer.name}`}
-      author={company?.name ?? 'Bill Book'}
-      creator={company?.name ?? 'Bill Book'}
+      author={company?.name ?? 'Safarmate Admin Portal'}
+      creator={company?.name ?? 'Safarmate Admin Portal'}
     >
       <Page size="A4" style={styles.page}>
         <View style={styles.headerRow}>
