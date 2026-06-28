@@ -46,6 +46,7 @@ import type {
   FlightBoard,
   FlightStatus,
   FlightSyncResult,
+  FlightSyncSummary,
 } from '@/lib/types';
 import { FLIGHT_STATUSES } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -265,22 +266,63 @@ export default function FlightsPage() {
     onError: (err) => toast.error(apiError(err)),
   });
 
-  const syncEmails = useMutation({
-    mutationFn: async () => {
-      const res = await api.post<FlightSyncResult>('/flights/email/sync', {});
-      return res.data;
-    },
-    onSuccess: (result) => {
-      const { summary } = result;
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<FlightSyncSummary | null>(null);
+
+  async function runFullSync() {
+    if (syncing) return;
+    setSyncing(true);
+    const totals: FlightSyncSummary = {
+      scanned: 0,
+      parsed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+    };
+    setSyncProgress(totals);
+    const toastId = toast.loading('Scanning inbox…');
+    let cursor: string | null = null;
+    let pages = 0;
+    const MAX_PAGES = 20; // hard ceiling so a runaway inbox can't loop forever
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        pages += 1;
+        const payload: { since?: string } = {};
+        if (cursor) payload.since = cursor;
+        const res = await api.post<FlightSyncResult>('/flights/email/sync', payload);
+        const result = res.data;
+        totals.scanned += result.summary.scanned;
+        totals.parsed += result.summary.parsed;
+        totals.created += result.summary.created;
+        totals.updated += result.summary.updated;
+        totals.skipped += result.summary.skipped;
+        setSyncProgress({ ...totals });
+        qc.invalidateQueries({ queryKey: ['flights'] });
+        qc.invalidateQueries({ queryKey: ['company'] });
+
+        toast.loading(
+          `Scanning inbox · ${totals.scanned} mails, ${totals.created} new, ${totals.updated} updated`,
+          { id: toastId }
+        );
+
+        if (!result.hasMore || !result.nextSince || pages >= MAX_PAGES) break;
+        cursor = result.nextSince;
+      }
+
       toast.success(
-        `Scanned ${summary.scanned} emails · ${summary.created} new, ${summary.updated} updated, ${summary.skipped} skipped`,
-        { duration: 8_000 }
+        `Sync complete · scanned ${totals.scanned}, ${totals.created} new, ${totals.updated} updated, ${totals.skipped} skipped`,
+        { id: toastId, duration: 8_000 }
       );
-      qc.invalidateQueries({ queryKey: ['flights'] });
-      qc.invalidateQueries({ queryKey: ['company'] });
-    },
-    onError: (err) => toast.error(apiError(err)),
-  });
+    } catch (err) {
+      toast.error(apiError(err), { id: toastId });
+    } finally {
+      setSyncing(false);
+      // keep the progress card up for a beat so users see what happened
+      setTimeout(() => setSyncProgress(null), 4_000);
+    }
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -406,12 +448,12 @@ export default function FlightsPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => syncEmails.mutate()}
-            disabled={!gmailReady || syncEmails.isPending}
+            onClick={() => runFullSync()}
+            disabled={!gmailReady || syncing}
             className="h-9"
-            title={gmailReady ? 'Sync your Gmail inbox' : 'Configure Gmail in Settings → Flight automation'}
+            title={gmailReady ? 'Scan every recent email for flights' : 'Configure Gmail in Settings → Flight automation'}
           >
-            {syncEmails.isPending ? (
+            {syncing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -425,9 +467,29 @@ export default function FlightsPage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <Inbox className="h-3.5 w-3.5" />
-          {totalCards} flights tracked · {filteredTotal} shown
+        <span className="flex items-center gap-3">
+          <span className="flex items-center gap-2">
+            <Inbox className="h-3.5 w-3.5" />
+            {totalCards} flights tracked · {filteredTotal} shown
+          </span>
+          {syncing || syncProgress ? (
+            <span
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-2 py-1',
+                syncing
+                  ? 'bg-secondary/10 text-secondary'
+                  : 'bg-emerald-500/10 text-emerald-500'
+              )}
+            >
+              {syncing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              Scanned {syncProgress?.scanned ?? 0} · {syncProgress?.created ?? 0} new ·{' '}
+              {syncProgress?.updated ?? 0} updated
+            </span>
+          ) : null}
         </span>
         <span className="flex items-center gap-3">
           {gmailReady ? (

@@ -2,20 +2,23 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { env } from '../config/env';
 import { FLIGHT_STATUSES } from '../models/Flight';
 
-const SYSTEM_PROMPT = `You are an airline-ticket and flight-status email parser for a travel agency.
+const SYSTEM_PROMPT = `You are an airline-ticket and flight-status email parser for an Indian travel agency.
 
-Given a flight ticket PDF or an airline / OTA email body (any English including Indian English; possibly multi-segment), extract a single primary flight segment.
+Given a flight ticket PDF or an airline / OTA / GDS email body (any English including Indian English; possibly multi-segment), decide whether it describes a real flight booking or status update. If it does NOT (newsletter, marketing, OTP, deal alert, password reset, generic loyalty mail, hotel/rail/bus booking, anything non-flight), return an object with empty pnr AND empty flightNumber so the system can skip it. Do not invent data.
 
-Rules:
-- Output ONLY valid JSON matching the schema. No prose.
-- If multiple segments, pick the upcoming one (or the latest if all are past).
-- All times must be returned as ISO-8601 UTC. If only a local time is given with no zone, return as ISO with no zone shift; downstream code will treat as local.
-- PNR / booking reference: 6-character alphanumeric is typical. Always uppercase.
-- airlineCode is the 2-letter IATA code (e.g. AI, 6E, UK). flightNumber is full code "6E-2134" or "AI 401".
-- fromAirport / toAirport are 3-letter IATA codes (DEL, BOM, JAI). If only city given, leave the code empty and put city in fromCity / toCity.
-- status must be one of: ${FLIGHT_STATUSES.join(', ')}. Use the closest match. Default to "booked" if the email is just a confirmation. If the subject says delayed/cancelled/boarding, reflect that.
-- statusNote captures any human-readable change (e.g. "Delayed by 45 min to 18:15", "Gate changed to B12").
-- passengers: extract each as a separate object with name + optional seat + cabin.
+If it IS a flight email, extract a single primary flight segment using these rules:
+- Output ONLY valid JSON matching the schema. No prose, no markdown.
+- If multiple segments, pick the next upcoming one (or the latest if all are past).
+- TIMES — return ISO-8601 strings exactly as printed in the source:
+    * If the source gives a timezone offset (e.g. "14:35 IST", "09:00 GMT+5:30"), return ISO WITH that offset, e.g. "2026-06-30T14:35:00+05:30".
+    * If the source gives only a clock time with NO timezone, return ISO WITHOUT any 'Z' and WITHOUT any offset, e.g. "2026-06-30T14:35:00". Downstream code will treat this as Asia/Kolkata (IST, +05:30). Never append 'Z'. Never convert to UTC yourself.
+    * Never guess a time you cannot see.
+- PNR / booking reference: 6-character alphanumeric is typical. Always uppercase. If no PNR, leave empty.
+- airlineCode is the 2-letter IATA code (e.g. AI, 6E, UK). flightNumber is the full code "6E-2134" or "AI 401" — preserve the exact format the airline used, uppercased.
+- fromAirport / toAirport are 3-letter IATA codes (DEL, BOM, JAI, MAA, BLR). If only city is given, leave the code empty and put the city in fromCity / toCity.
+- status must be one of: ${FLIGHT_STATUSES.join(', ')}. Use the closest match. Default to "booked" for fresh confirmations, "confirmed" once the e-ticket is issued. If the subject or body mentions delayed / rescheduled / cancelled / boarding / check-in, reflect that.
+- statusNote captures any human-readable change ("Delayed by 45 min to 18:15", "Gate changed to B12", "Rescheduled to 30 Jun 09:25").
+- passengers: extract each as a separate object with name + optional seat + cabin. Title-case names.
 - If a field is unknown, return an empty string (or null for dates/numbers).`;
 
 const passengerSchema = {
@@ -43,11 +46,13 @@ export const flightJsonSchema = {
     toTerminal: { type: SchemaType.STRING },
     departureAt: {
       type: SchemaType.STRING,
-      description: 'ISO-8601 local time of scheduled departure. Empty if unknown.',
+      description:
+        'Scheduled departure. ISO-8601 with explicit offset if the source gave one (e.g. "2026-06-30T14:35:00+05:30"); otherwise naive local ISO with NO Z and NO offset (e.g. "2026-06-30T14:35:00"). Empty string if unknown.',
     },
     arrivalAt: {
       type: SchemaType.STRING,
-      description: 'ISO-8601 local time of scheduled arrival. Empty if unknown.',
+      description:
+        'Scheduled arrival. Same ISO-8601 rules as departureAt. Empty string if unknown.',
     },
     durationMinutes: { type: SchemaType.NUMBER },
     cabinClass: { type: SchemaType.STRING },
@@ -78,9 +83,27 @@ export interface ParsedFlight {
   statusNote: string;
 }
 
+// Match an ISO-like local datetime with no timezone suffix, e.g.
+// "2026-06-30T14:35", "2026-06-30T14:35:00", "2026-06-30T14:35:00.123".
+const NAIVE_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/;
+// Match an ISO-like local datetime with a space separator.
+const NAIVE_SPACED = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?(\.\d+)?$/;
+
 function parseAtMost(input: string): Date | null {
   if (!input) return null;
-  const d = new Date(input);
+  let value = input.trim();
+  if (!value) return null;
+
+  // If the model returned a naive local time (no Z, no offset), assume IST
+  // because Node on Vercel runs in UTC and `new Date(naive)` would otherwise
+  // be interpreted as UTC, shifting Indian departure times by +05:30.
+  if (NAIVE_ISO.test(value)) {
+    value = `${value}+05:30`;
+  } else if (NAIVE_SPACED.test(value)) {
+    value = `${value.replace(' ', 'T')}+05:30`;
+  }
+
+  const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d;
 }

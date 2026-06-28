@@ -416,29 +416,54 @@ router.post(
   })
 );
 
-const FLIGHT_KEYWORDS = [
-  'flight',
-  'pnr',
-  'boarding',
-  'ticket',
-  'itinerary',
-  'e-ticket',
-  'check-in',
-  'check in',
-  'gate',
-  'terminal',
-  'delayed',
-  'cancelled',
+// Cheap pre-filter to avoid spending AI tokens on obvious non-mail
+// (newsletters, password resets, bills, social notifs). We do NOT use a
+// flight-keyword allowlist — we want every mail that *might* be a flight to
+// reach the model, so the model gets to decide. Only the most blatantly
+// non-flight things are dropped here.
+const HARD_SKIP_SUBJECTS = [
+  'unsubscribe',
+  'verify your email',
+  'reset your password',
+  'one-time password',
+  'security alert',
+  'invitation to connect',
+  'two-factor',
+  'otp ',
 ];
 
-function looksLikeFlightEmail(subject: string, body: string): boolean {
-  const hay = `${subject} ${body}`.toLowerCase();
-  return FLIGHT_KEYWORDS.some((kw) => hay.includes(kw));
+function shouldHardSkip(subject: string, fromText: string): boolean {
+  const s = subject.toLowerCase();
+  const f = fromText.toLowerCase();
+  if (HARD_SKIP_SUBJECTS.some((kw) => s.includes(kw))) return true;
+  // Common non-flight senders. Keep narrow on purpose.
+  if (/(linkedin|github|stackoverflow|notifications@|noreply@medium)/i.test(f)) return true;
+  return false;
+}
+
+// Process N items in parallel, capped concurrency.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      results[idx] = await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+  return results;
 }
 
 router.post(
   '/email/sync',
   asyncHandler(async (req, res) => {
+    const start = Date.now();
     const companyId = req.user!.companyId as string;
     const company = await Company.findById(companyId);
     if (!company) throw ApiError.notFound('Company not found');
@@ -449,10 +474,22 @@ router.post(
     }
     const apiKey = await resolveApiKey(companyId);
 
-    const sinceParam = (req.body?.since as string | undefined) ?? '';
-    const fallbackSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const since = sinceParam ? new Date(sinceParam) : company.lastFlightSyncAt ?? fallbackSince;
-    const limit = Math.min(Math.max(Number(req.body?.limit ?? 25), 1), 50);
+    const body = (req.body ?? {}) as {
+      since?: string;
+      limit?: number;
+      lookbackDays?: number;
+    };
+    const sinceParam = body.since ?? '';
+    const lookbackDays = Math.max(1, Math.min(Number(body.lookbackDays ?? 30), 180));
+    const fallbackSince = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+    const since = sinceParam
+      ? new Date(sinceParam)
+      : company.lastFlightSyncAt ?? fallbackSince;
+    const limit = Math.min(Math.max(Number(body.limit ?? 30), 1), 60);
+    // Stop accepting new work once we're this deep into the time budget so
+    // we have headroom for IMAP logout + Mongo write + response. vercel.json
+    // sets maxDuration=60s.
+    const TIME_BUDGET_MS = 48_000;
 
     const client = new ImapFlow({
       host: 'imap.gmail.com',
@@ -465,25 +502,40 @@ router.post(
       },
     });
 
-    let summary = { scanned: 0, parsed: 0, created: 0, updated: 0, skipped: 0 } as {
-      scanned: number;
-      parsed: number;
-      created: number;
-      updated: number;
-      skipped: number;
-    };
+    const summary = { scanned: 0, parsed: 0, created: 0, updated: 0, skipped: 0 };
     const errors: string[] = [];
+    let hasMore = false;
+    let nextSince: string | null = null;
+    let newestProcessedAt: Date | null = null;
+
+    interface PreparedMessage {
+      uid: number;
+      messageId: string;
+      subject: string;
+      fromText: string;
+      dateValue: Date;
+      cleanBody: string;
+    }
 
     try {
       await client.connect();
       const lock = await client.getMailboxLock('INBOX');
       try {
         const uidsResult = await client.search({ since });
-        const uids: number[] = Array.isArray(uidsResult) ? uidsResult : [];
-        const candidates = uids.slice(-limit);
-        summary.scanned = candidates.length;
+        const uids: number[] = Array.isArray(uidsResult) ? uidsResult.slice() : [];
+        // Oldest-first so we can advance the cursor monotonically and the
+        // next page picks up right where we stopped.
+        uids.sort((a, b) => a - b);
+        const candidates = uids.slice(0, limit);
+        hasMore = uids.length > candidates.length;
 
+        // Step 1: fetch + parse all envelopes/bodies serially (IMAP needs the lock).
+        const prepared: PreparedMessage[] = [];
         for (const uid of candidates) {
+          if (Date.now() - start > TIME_BUDGET_MS) {
+            hasMore = true;
+            break;
+          }
           try {
             const message = await client.fetchOne(uid, { source: true, envelope: true });
             if (!message || !message.source) continue;
@@ -494,37 +546,69 @@ router.post(
             const dateValue = parsedMail.date ?? message.envelope?.date ?? new Date();
             const textBody = parsedMail.text || parsedMail.html || '';
             const cleanBody = String(textBody).replace(/\s+/g, ' ').trim().slice(0, 12_000);
+            prepared.push({
+              uid,
+              messageId: message.envelope?.messageId ?? `uid-${uid}`,
+              subject,
+              fromText,
+              dateValue,
+              cleanBody,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            errors.push(`fetch uid ${uid}: ${message.slice(0, 200)}`);
+          }
+        }
 
-            if (!looksLikeFlightEmail(subject, cleanBody)) {
-              summary.skipped += 1;
-              continue;
+        summary.scanned = prepared.length;
+
+        // Step 2: ship each to Gemini in parallel batches. Skip obvious noise
+        // upfront to keep token spend reasonable. Everything else gets the
+        // model — the model decides whether it's actually a flight.
+        await mapWithConcurrency(prepared, 4, async (msg) => {
+          // If we've blown the time budget, mark as not-yet-processed so the
+          // cursor doesn't advance past it.
+          if (Date.now() - start > TIME_BUDGET_MS) {
+            hasMore = true;
+            return;
+          }
+
+          if (shouldHardSkip(msg.subject, msg.fromText)) {
+            summary.skipped += 1;
+            if (!newestProcessedAt || msg.dateValue > newestProcessedAt) {
+              newestProcessedAt = msg.dateValue;
             }
+            return;
+          }
 
-            const composed = `Subject: ${subject}\nFrom: ${fromText}\nDate: ${dateValue.toISOString()}\n\n${cleanBody}`;
+          try {
+            const composed = `Subject: ${msg.subject}\nFrom: ${msg.fromText}\nDate: ${msg.dateValue.toISOString()}\n\n${msg.cleanBody}`;
             const parsed = await extractFlight({ apiKey, text: composed });
 
             if (!parsed.pnr && !parsed.flightNumber) {
               summary.skipped += 1;
-              continue;
+            } else {
+              const result = await upsertFromExtraction(companyId, parsed, {
+                source: 'email',
+                sourceRef: `imap:${msg.messageId}`,
+                emailSubject: msg.subject,
+                emailFrom: msg.fromText,
+                emailDate: msg.dateValue,
+                rawSnippet: msg.cleanBody,
+              });
+              summary.parsed += 1;
+              if (result.created) summary.created += 1;
+              else summary.updated += 1;
             }
-
-            const result = await upsertFromExtraction(companyId, parsed, {
-              source: 'email',
-              sourceRef: `imap:${message.envelope?.messageId ?? uid}`,
-              emailSubject: subject,
-              emailFrom: fromText,
-              emailDate: dateValue,
-              rawSnippet: cleanBody,
-            });
-            summary.parsed += 1;
-            if (result.created) summary.created += 1;
-            else summary.updated += 1;
+            if (!newestProcessedAt || msg.dateValue > newestProcessedAt) {
+              newestProcessedAt = msg.dateValue;
+            }
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            errors.push(message.slice(0, 300));
+            errors.push(`uid ${msg.uid}: ${message.slice(0, 200)}`);
             summary.skipped += 1;
           }
-        }
+        });
       } finally {
         lock.release();
       }
@@ -539,10 +623,27 @@ router.post(
       }
     }
 
-    company.lastFlightSyncAt = new Date();
-    await company.save();
+    // Advance the high-water mark to the newest message we *finished*. If we
+    // didn't finish any, leave it alone so the next call retries the same window.
+    // TS narrows `newestProcessedAt` to `never` because the writes happen inside
+    // closures, so we read through `unknown` to recover the actual runtime type.
+    const finalNewest = newestProcessedAt as unknown as Date | null;
+    if (finalNewest) {
+      company.lastFlightSyncAt = finalNewest;
+      await company.save();
+      nextSince = finalNewest.toISOString();
+    } else {
+      nextSince = null;
+    }
 
-    res.json({ summary, errors, lastFlightSyncAt: company.lastFlightSyncAt });
+    res.json({
+      summary,
+      errors: errors.slice(0, 10),
+      lastFlightSyncAt: company.lastFlightSyncAt,
+      hasMore,
+      nextSince,
+      elapsedMs: Date.now() - start,
+    });
   })
 );
 

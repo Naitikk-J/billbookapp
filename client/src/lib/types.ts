@@ -292,7 +292,10 @@ export interface FlightSyncSummary {
 export interface FlightSyncResult {
   summary: FlightSyncSummary;
   errors: string[];
-  lastFlightSyncAt: string;
+  lastFlightSyncAt: string | null;
+  hasMore: boolean;
+  nextSince: string | null;
+  elapsedMs?: number;
 }
 
 export interface DashboardStats {
