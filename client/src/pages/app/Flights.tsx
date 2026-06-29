@@ -269,7 +269,7 @@ export default function FlightsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<FlightSyncSummary | null>(null);
 
-  async function runFullSync() {
+  async function runFullSync(options: { fullResync?: boolean; lookbackDays?: number } = {}) {
     if (syncing) return;
     setSyncing(true);
     const totals: FlightSyncSummary = {
@@ -280,17 +280,27 @@ export default function FlightsPage() {
       skipped: 0,
     };
     setSyncProgress(totals);
-    const toastId = toast.loading('Scanning inbox…');
+    const label = options.fullResync ? 'Deep rescan' : 'Scanning inbox';
+    const toastId = toast.loading(`${label}…`);
     let cursor: string | null = null;
     let pages = 0;
-    const MAX_PAGES = 20; // hard ceiling so a runaway inbox can't loop forever
+    const MAX_PAGES = 30; // hard ceiling so a runaway inbox can't loop forever
 
     try {
       // eslint-disable-next-line no-constant-condition
       while (true) {
         pages += 1;
-        const payload: { since?: string } = {};
-        if (cursor) payload.since = cursor;
+        const payload: {
+          since?: string;
+          fullResync?: boolean;
+          lookbackDays?: number;
+        } = {};
+        if (cursor) {
+          payload.since = cursor;
+        } else if (options.fullResync) {
+          payload.fullResync = true;
+          payload.lookbackDays = options.lookbackDays ?? 90;
+        }
         const res = await api.post<FlightSyncResult>('/flights/email/sync', payload);
         const result = res.data;
         totals.scanned += result.summary.scanned;
@@ -303,7 +313,7 @@ export default function FlightsPage() {
         qc.invalidateQueries({ queryKey: ['company'] });
 
         toast.loading(
-          `Scanning inbox · ${totals.scanned} mails, ${totals.created} new, ${totals.updated} updated`,
+          `${label} · ${totals.scanned} mails · ${totals.created} new · ${totals.updated} updated`,
           { id: toastId }
         );
 
@@ -312,7 +322,7 @@ export default function FlightsPage() {
       }
 
       toast.success(
-        `Sync complete · scanned ${totals.scanned}, ${totals.created} new, ${totals.updated} updated, ${totals.skipped} skipped`,
+        `${label} complete · scanned ${totals.scanned}, ${totals.created} new, ${totals.updated} updated, ${totals.skipped} skipped`,
         { id: toastId, duration: 8_000 }
       );
     } catch (err) {
@@ -446,20 +456,44 @@ export default function FlightsPage() {
           <Button variant="outline" onClick={() => setEmailOpen(true)} className="h-9">
             <Mail className="h-4 w-4" /> Paste email
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => runFullSync()}
-            disabled={!gmailReady || syncing}
-            className="h-9"
-            title={gmailReady ? 'Scan every recent email for flights' : 'Configure Gmail in Settings → Flight automation'}
-          >
-            {syncing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Sync inbox
-          </Button>
+          <div className="flex h-9 items-stretch overflow-hidden rounded-lg border border-input bg-background shadow-sm">
+            <button
+              type="button"
+              onClick={() => runFullSync()}
+              disabled={!gmailReady || syncing}
+              title={
+                gmailReady
+                  ? 'Scan new mail since the last sync'
+                  : 'Configure Gmail in Settings → Flight automation'
+              }
+              className="inline-flex items-center gap-1.5 px-3 text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Sync inbox
+            </button>
+            <div className="w-px bg-border" />
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  confirm(
+                    'Deep rescan the last 90 days from scratch? This ignores the last-sync marker and re-reads every mail (uses more AI tokens).'
+                  )
+                ) {
+                  runFullSync({ fullResync: true, lookbackDays: 90 });
+                }
+              }}
+              disabled={!gmailReady || syncing}
+              title="Deep rescan last 90 days from scratch"
+              className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              90d
+            </button>
+          </div>
           <Button variant="primary" onClick={() => setCreateOpen(true)} className="h-9">
             <Plus className="h-4 w-4" /> Manual
           </Button>

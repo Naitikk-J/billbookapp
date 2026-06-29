@@ -4,7 +4,12 @@ import { FLIGHT_STATUSES } from '../models/Flight';
 
 const SYSTEM_PROMPT = `You are an airline-ticket and flight-status email parser for an Indian travel agency.
 
-Given a flight ticket PDF or an airline / OTA / GDS email body (any English including Indian English; possibly multi-segment), decide whether it describes a real flight booking or status update. If it does NOT (newsletter, marketing, OTP, deal alert, password reset, generic loyalty mail, hotel/rail/bus booking, anything non-flight), return an object with empty pnr AND empty flightNumber so the system can skip it. Do not invent data.
+Inputs are real mail bodies from Indian OTAs and airlines:
+- OTAs: Goibibo, MakeMyTrip / MMT, Cleartrip, EaseMyTrip, Yatra, Ixigo, Paytm Travel, Booking.com Flights.
+- Airlines: IndiGo (6E), Air India (AI), Air India Express (IX), Vistara (UK, legacy), SpiceJet (SG), Akasa Air (QP), Star Air (S5/OG), AIX Connect, Alliance Air (9I), Go First (G8, defunct), Air Asia India.
+Many of these mails are HTML-only and have heavy marketing / footer content. The actual flight block usually appears once and is short. Search the WHOLE body — confirmations from Goibibo / MMT / Cleartrip often bury the PNR, sector and times after a long banner. Tabular layouts ("From / To / Date / Flight / PNR / Departure / Arrival") are common — read them as columns.
+
+Given a flight ticket PDF or one such email body (any English including Indian English; possibly multi-segment), decide whether it describes a real flight booking or status update. If it does NOT (newsletter, deal alert, OTP, password reset, generic loyalty mail, hotel/rail/bus/cab booking, anything non-flight), return an object with empty pnr AND empty flightNumber so the system can skip it. Do not invent data. Pull data only from what you can see.
 
 If it IS a flight email, extract a single primary flight segment using these rules:
 - Output ONLY valid JSON matching the schema. No prose, no markdown.

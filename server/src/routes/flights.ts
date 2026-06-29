@@ -416,29 +416,94 @@ router.post(
   })
 );
 
-// Cheap pre-filter to avoid spending AI tokens on obvious non-mail
-// (newsletters, password resets, bills, social notifs). We do NOT use a
-// flight-keyword allowlist — we want every mail that *might* be a flight to
-// reach the model, so the model gets to decide. Only the most blatantly
-// non-flight things are dropped here.
-const HARD_SKIP_SUBJECTS = [
-  'unsubscribe',
-  'verify your email',
-  'reset your password',
-  'one-time password',
-  'security alert',
-  'invitation to connect',
-  'two-factor',
-  'otp ',
+// Cheap pre-filter to avoid spending AI tokens on obvious non-flight mail.
+// IMPORTANT: keep this VERY narrow. Indian OTAs and airlines often send
+// flight confirmations from senders like `notifications@goibibo.com`,
+// `bookings-noreply-notifications@spicejet.com`, `info@cleartrip.com`, etc.,
+// so any broad substring match (e.g. `notifications@`, `noreply`) drops
+// real flight emails. Match on full domain only.
+const HARD_SKIP_SUBJECT_PATTERNS: RegExp[] = [
+  /\bone[-\s]?time password\b/i,
+  /\botp\b/i,
+  /\bverification code\b/i,
+  /\bverify (your )?(email|account)\b/i,
+  /\breset (your )?password\b/i,
+  /\bpassword reset\b/i,
+  /\btwo[-\s]?factor\b/i,
+  /\bsecurity alert\b/i,
+  /\bsign[-\s]?in (alert|notification)\b/i,
+];
+
+// Senders we are 100% certain never carry flight bookings. Matched on
+// `@domain.com` so subdomains still count.
+const HARD_SKIP_FROM_DOMAINS = [
+  'linkedin.com',
+  'github.com',
+  'medium.com',
+  'quora.com',
+  'stackoverflow.com',
+  'stackexchange.com',
+  'facebookmail.com',
+  'twitter.com',
+  'x.com',
+  'instagram.com',
+  'slack.com',
+  'discord.com',
+  'pinterest.com',
+  'reddit.com',
+  'jira.com',
+  'atlassian.net',
 ];
 
 function shouldHardSkip(subject: string, fromText: string): boolean {
-  const s = subject.toLowerCase();
-  const f = fromText.toLowerCase();
-  if (HARD_SKIP_SUBJECTS.some((kw) => s.includes(kw))) return true;
-  // Common non-flight senders. Keep narrow on purpose.
-  if (/(linkedin|github|stackoverflow|notifications@|noreply@medium)/i.test(f)) return true;
+  if (HARD_SKIP_SUBJECT_PATTERNS.some((re) => re.test(subject))) return true;
+  const lc = fromText.toLowerCase();
+  if (
+    HARD_SKIP_FROM_DOMAINS.some(
+      (d) => lc.includes(`@${d}`) || lc.includes(`.${d}`)
+    )
+  ) {
+    return true;
+  }
   return false;
+}
+
+// Strip HTML mail bodies down to plain text so OTA confirmations
+// (Goibibo / MMT / Cleartrip / EaseMyTrip etc., which are HTML-only) become
+// readable for the model and don't blow past the truncation budget.
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<(br|hr)\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6]|td)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function extractEmailBody(parsedMail: {
+  text?: string | null;
+  html?: string | false | null;
+}): string {
+  const text = (parsedMail.text ?? '').trim();
+  if (text.length >= 200) return text;
+  const html = typeof parsedMail.html === 'string' ? parsedMail.html : '';
+  if (html) {
+    const stripped = htmlToPlainText(html);
+    if (stripped.length > text.length) return stripped;
+  }
+  return text;
 }
 
 // Process N items in parallel, capped concurrency.
@@ -478,12 +543,21 @@ router.post(
       since?: string;
       limit?: number;
       lookbackDays?: number;
+      fullResync?: boolean;
     };
     const sinceParam = body.since ?? '';
-    const lookbackDays = Math.max(1, Math.min(Number(body.lookbackDays ?? 30), 180));
+    const fullResync = Boolean(body.fullResync);
+    // When forcing a full resync, look further back by default. Capped at 6 months.
+    const defaultLookback = fullResync ? 90 : 30;
+    const lookbackDays = Math.max(
+      1,
+      Math.min(Number(body.lookbackDays ?? defaultLookback), 180)
+    );
     const fallbackSince = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
     const since = sinceParam
       ? new Date(sinceParam)
+      : fullResync
+      ? fallbackSince
       : company.lastFlightSyncAt ?? fallbackSince;
     const limit = Math.min(Math.max(Number(body.limit ?? 30), 1), 60);
     // Stop accepting new work once we're this deep into the time budget so
@@ -544,8 +618,10 @@ router.post(
             const fromText =
               parsedMail.from?.text ?? message.envelope?.from?.[0]?.address ?? '';
             const dateValue = parsedMail.date ?? message.envelope?.date ?? new Date();
-            const textBody = parsedMail.text || parsedMail.html || '';
-            const cleanBody = String(textBody).replace(/\s+/g, ' ').trim().slice(0, 12_000);
+            const bodyRaw = extractEmailBody(parsedMail);
+            // 24 KB is enough for the largest Indian OTA confirmation we've seen
+            // after HTML stripping (Goibibo runs ~18 KB).
+            const cleanBody = bodyRaw.replace(/[ \t]+/g, ' ').slice(0, 24_000);
             prepared.push({
               uid,
               messageId: message.envelope?.messageId ?? `uid-${uid}`,
