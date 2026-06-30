@@ -21,6 +21,7 @@ const customerSchema = new Schema(
       index: true,
     },
     openingBalance: { type: Number, default: 0 },
+    lastReminderAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

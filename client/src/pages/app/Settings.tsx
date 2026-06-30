@@ -1,11 +1,19 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import { Loader2, PlaneTakeoff, Save, Sparkles } from 'lucide-react';
+import {
+  Loader2,
+  LogOut,
+  MessageCircle,
+  PlaneTakeoff,
+  RefreshCw,
+  Save,
+  Sparkles,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, apiError } from '@/lib/api';
-import type { Company } from '@/lib/types';
+import type { Company, WhatsAppStatusResponse } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +47,31 @@ export default function SettingsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['company'] });
       toast.success('Settings saved');
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const whatsapp = useQuery({
+    queryKey: ['whatsapp-status'],
+    queryFn: async () => {
+      const res = await api.get<WhatsAppStatusResponse>('/whatsapp/status');
+      return res.data;
+    },
+    refetchInterval: (q) => {
+      const data = q.state.data as WhatsAppStatusResponse | undefined;
+      if (!data?.configured) return false;
+      if (data.status?.ready) return 30_000;
+      return 4_000;
+    },
+  });
+
+  const whatsappLogout = useMutation({
+    mutationFn: async () => {
+      await api.post('/whatsapp/logout');
+    },
+    onSuccess: () => {
+      toast.success('WhatsApp disconnected');
+      qc.invalidateQueries({ queryKey: ['whatsapp-status'] });
     },
     onError: (e) => toast.error(apiError(e)),
   });
@@ -202,9 +235,126 @@ export default function SettingsPage() {
               </Field>
             </CardContent>
           </Card>
+
+          <WhatsAppCard
+            status={whatsapp.data ?? null}
+            loading={whatsapp.isLoading}
+            onRefresh={() => whatsapp.refetch()}
+            onLogout={() => {
+              if (confirm('Disconnect WhatsApp? You will need to scan the QR again to send reminders.')) {
+                whatsappLogout.mutate();
+              }
+            }}
+            disconnecting={whatsappLogout.isPending}
+          />
         </div>
       )}
     </div>
+  );
+}
+
+function WhatsAppCard({
+  status,
+  loading,
+  onRefresh,
+  onLogout,
+  disconnecting,
+}: {
+  status: WhatsAppStatusResponse | null;
+  loading: boolean;
+  onRefresh: () => void;
+  onLogout: () => void;
+  disconnecting: boolean;
+}) {
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <MessageCircle className="h-4 w-4 text-emerald-500" /> WhatsApp reminders
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Powered by your self-hosted <code className="rounded bg-muted px-1 py-0.5">whatsapp-bridge</code>{' '}
+          service. Scan the QR once with WhatsApp → Settings → Linked devices. The session is stored only on
+          the bridge machine; the browser never sees any secret.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : !status?.configured ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
+            <p className="font-medium">Bridge not configured on the server.</p>
+            <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+              {status?.reason ??
+                'Set WHATSAPP_BRIDGE_URL and WHATSAPP_BRIDGE_TOKEN on the server, then restart.'}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Run instructions live in <code className="rounded bg-muted px-1">whatsapp-bridge/README.md</code>.
+            </p>
+          </div>
+        ) : status.unreachable || !status.status ? (
+          <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
+            <div>
+              <p className="font-medium">Bridge unreachable.</p>
+              <p className="mt-1 text-xs">{status.reason ?? 'The bridge service is offline.'}</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={onRefresh}>
+              <RefreshCw className="h-4 w-4" /> Retry
+            </Button>
+          </div>
+        ) : status.status.state === 'ready' ? (
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Connected
+              </div>
+              <p className="mt-2 text-sm">
+                Sending as{' '}
+                <span className="font-semibold">
+                  +{status.status.account?.number ?? '—'}
+                </span>
+                {status.status.account?.name ? ` (${status.status.account.name})` : ''}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onLogout}
+              disabled={disconnecting}
+            >
+              {disconnecting ? <Loader2 className="animate-spin" /> : <><LogOut className="h-4 w-4" /> Disconnect</>}
+            </Button>
+          </div>
+        ) : status.status.state === 'qr' && status.status.qrDataUrl ? (
+          <div className="flex flex-col items-center gap-3">
+            <img
+              src={status.status.qrDataUrl}
+              alt="WhatsApp linking QR"
+              className="h-64 w-64 rounded-xl border border-border bg-white p-3"
+            />
+            <p className="text-center text-sm text-muted-foreground">
+              Open WhatsApp on your phone → <span className="font-medium">Settings → Linked devices → Link a device</span>{' '}
+              and scan this QR. It refreshes every ~20 s.
+            </p>
+            <Button type="button" size="sm" variant="ghost" onClick={onRefresh}>
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm">
+            <p className="font-medium capitalize">{status.status.state.replace('_', ' ')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {status.status.message || 'Waiting for the bridge to come online…'}
+            </p>
+            <div className="mt-3">
+              <Button type="button" size="sm" variant="outline" onClick={onRefresh}>
+                <RefreshCw className="h-4 w-4" /> Refresh
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

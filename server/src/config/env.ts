@@ -24,6 +24,8 @@ export const env = {
     .filter(Boolean),
   geminiApiKey: process.env.GEMINI_API_KEY ?? '',
   geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+  whatsappBridgeUrl: (process.env.WHATSAPP_BRIDGE_URL ?? '').replace(/\/+$/, ''),
+  whatsappBridgeToken: process.env.WHATSAPP_BRIDGE_TOKEN ?? '',
 } as const;
 
 export const isProd = env.nodeEnv === 'production';

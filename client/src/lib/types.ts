@@ -84,6 +84,7 @@ export interface LedgerAccount {
   city?: string;
   balance: number;
   lastActivity?: string | null;
+  lastReminderAt?: string | null;
 }
 
 export interface LedgerSummary {
@@ -296,6 +297,39 @@ export interface FlightSyncResult {
   hasMore: boolean;
   nextSince: string | null;
   elapsedMs?: number;
+}
+
+export type WhatsAppBridgeState =
+  | 'initializing'
+  | 'qr'
+  | 'authenticated'
+  | 'ready'
+  | 'disconnected'
+  | 'auth_failure';
+
+export interface WhatsAppBridgeStatus {
+  state: WhatsAppBridgeState;
+  ready: boolean;
+  qrDataUrl: string | null;
+  qrIssuedAt: string | null;
+  message: string;
+  account: { number: string; name: string } | null;
+}
+
+export interface WhatsAppStatusResponse {
+  configured: boolean;
+  reason?: string;
+  unreachable?: boolean;
+  status: WhatsAppBridgeStatus | null;
+}
+
+export interface ReminderResult {
+  ok: true;
+  messageId: string;
+  sentAt: string;
+  message: string;
+  to: string;
+  balance: number;
 }
 
 export interface DashboardStats {

@@ -17,6 +17,7 @@ import invoiceRoutes from './routes/invoices';
 import ledgerRoutes from './routes/ledger';
 import aiRoutes from './routes/ai';
 import flightRoutes from './routes/flights';
+import whatsappRoutes from './routes/whatsapp';
 
 let initialized = false;
 
@@ -60,6 +61,7 @@ export function createApp(): Express {
   app.use('/api/ledger', ledgerRoutes);
   app.use('/api/ai', aiRoutes);
   app.use('/api/flights', flightRoutes);
+  app.use('/api/whatsapp', whatsappRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -14,6 +14,24 @@ The operations cockpit for travel agencies — invoices, ledger, customers, prod
 
 Add `GMAIL_ADDRESS` / Gmail App Password in Settings → Flight automation. Add `GEMINI_API_KEY` either company-wide in Settings → AI assistant or as a server env.
 
+## WhatsApp payment reminders
+
+The Ledger detail panel has a **Send reminder** button next to the PDF download. One click opens a pre-filled message ("Hello {name}, you have an outstanding balance of ₹X with {company}…") that goes out over WhatsApp.
+
+Because Vercel serverless functions can't keep a Puppeteer browser alive, sending lives in a **separate `whatsapp-bridge/` service** that runs `whatsapp-web.js` with persistent local session storage. Run it on your own machine or a small VPS; the Vercel server talks to it over the network with a shared bearer token.
+
+```bash
+cd whatsapp-bridge
+npm install
+cp .env.example .env
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  # set WHATSAPP_BRIDGE_TOKEN
+npm run dev
+```
+
+Then set `WHATSAPP_BRIDGE_URL` and `WHATSAPP_BRIDGE_TOKEN` on the Safarmate server (Vercel env vars), open **Settings → WhatsApp reminders**, scan the QR with your phone's *Linked devices* screen, and the reminder button goes live across the ledger.
+
+Security: the bearer token only ever sits in the bridge `.env` and the server's env vars — the browser only ever sees the WhatsApp status and a transient QR PNG. The bridge defaults to binding `127.0.0.1`; if you expose it to the internet you must put it behind TLS (Cloudflare Tunnel, Caddy + Let's Encrypt, etc.). Full details in `whatsapp-bridge/README.md`.
+
 ## Stack
 
 **Frontend** — React 18, Vite, TypeScript, TailwindCSS, ShadCN-style primitives, Framer Motion, Redux Toolkit, TanStack React Query, React Hook Form, Zod, Axios, `@react-pdf/renderer`.

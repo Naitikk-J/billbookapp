@@ -5,16 +5,19 @@
   "description": "Safarmate Admin Portal — invoices, ledger, and live flight Kanban for travel agencies.",
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "whatsapp-bridge"
   ],
   "scripts": {
     "dev": "npm-run-all --parallel dev:client dev:server",
     "dev:client": "npm --workspace client run dev",
     "dev:server": "npm --workspace server run dev",
+    "dev:whatsapp": "npm --workspace whatsapp-bridge run dev",
     "build": "npm --workspace server run build && npm --workspace client run build",
     "build:client": "npm --workspace client run build",
     "build:server": "npm --workspace server run build",
-    "typecheck": "npm --workspace client run typecheck && npm --workspace server run typecheck",
+    "build:whatsapp": "npm --workspace whatsapp-bridge run build",
+    "typecheck": "npm --workspace client run typecheck && npm --workspace server run typecheck && npm --workspace whatsapp-bridge run typecheck",
     "lint": "npm --workspace client run lint",
     "install:all": "npm install"
   },

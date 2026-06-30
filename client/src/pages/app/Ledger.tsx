@@ -12,12 +12,15 @@ import {
   BookOpen,
   Download,
   Loader2,
+  MessageCircle,
   Pencil,
   Plus,
   Search,
+  Settings as SettingsIcon,
   Trash2,
   UserPlus,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import { api, apiError } from '@/lib/api';
 import type {
@@ -29,6 +32,8 @@ import type {
   LedgerEntryKind,
   LedgerEntryMethod,
   LedgerSummary,
+  ReminderResult,
+  WhatsAppStatusResponse,
 } from '@/lib/types';
 import { LedgerStatement } from '@/pdf/LedgerStatement';
 import { Button } from '@/components/ui/button';
@@ -91,6 +96,7 @@ export default function LedgerPage() {
   const [addPartyOpen, setAddPartyOpen] = useState(false);
   const [entryDialog, setEntryDialog] = useState<EntryDialogState>(null);
   const [downloading, setDownloading] = useState(false);
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
 
   const qc = useQueryClient();
 
@@ -127,6 +133,40 @@ export default function LedgerPage() {
       return res.data;
     },
     enabled: !!selectedId,
+  });
+
+  const whatsappStatus = useQuery({
+    queryKey: ['whatsapp-status'],
+    queryFn: async () => {
+      const res = await api.get<WhatsAppStatusResponse>('/whatsapp/status');
+      return res.data;
+    },
+    refetchInterval: (q) => {
+      const data = q.state.data as WhatsAppStatusResponse | undefined;
+      if (!data?.configured) return false;
+      // Poll faster while waiting for QR scan, slower once ready.
+      if (data.status?.ready) return 60_000;
+      return 6_000;
+    },
+    staleTime: 5_000,
+  });
+
+  const sendReminder = useMutation({
+    mutationFn: async (payload: { message?: string }) => {
+      if (!selectedId) throw new Error('Select a party first');
+      const res = await api.post<ReminderResult>(
+        `/ledger/${selectedId}/reminder`,
+        payload
+      );
+      return res.data;
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['ledger-summary'] });
+      qc.invalidateQueries({ queryKey: ['ledger-detail', selectedId] });
+      setReminderDialogOpen(false);
+      toast.success(`WhatsApp reminder sent to ${res.to}`);
+    },
+    onError: (err) => toast.error(apiError(err)),
   });
 
   const addEntry = useMutation({
@@ -367,6 +407,9 @@ export default function LedgerPage() {
               onDownload={handleDownload}
               downloading={downloading}
               deleting={deleteEntry.isPending}
+              onSendReminder={() => setReminderDialogOpen(true)}
+              whatsappStatus={whatsappStatus.data ?? null}
+              accountKind={tab}
             />
           ) : null}
         </Card>
@@ -389,6 +432,17 @@ export default function LedgerPage() {
         onCreate={(v) => addEntry.mutate(v)}
         onUpdate={(id, v) => updateEntry.mutate({ id, values: v })}
         saving={addEntry.isPending || updateEntry.isPending}
+      />
+
+      <ReminderDialog
+        open={reminderDialogOpen}
+        onOpenChange={(o) => {
+          if (!o) setReminderDialogOpen(false);
+        }}
+        detail={detail.data ?? null}
+        company={company.data ?? null}
+        onSend={(message) => sendReminder.mutate(message ? { message } : {})}
+        sending={sendReminder.isPending}
       />
     </div>
   );
@@ -462,6 +516,9 @@ function DetailPanel({
   onDownload,
   downloading,
   deleting,
+  onSendReminder,
+  whatsappStatus,
+  accountKind,
 }: {
   detail: LedgerCustomerDetail;
   tabLabel: string;
@@ -474,6 +531,9 @@ function DetailPanel({
   onDownload: () => void;
   downloading: boolean;
   deleting: boolean;
+  onSendReminder: () => void;
+  whatsappStatus: WhatsAppStatusResponse | null;
+  accountKind: AccountKind;
 }) {
   const grouped = useMemo(() => {
     const map = new Map<string, typeof detail.entries>();
@@ -488,6 +548,25 @@ function DetailPanel({
   const balance = detail.totals.balance;
   const positive = balance > 0;
   const negative = balance < 0;
+  const settled = !positive && !negative;
+  const hasPhone = !!(detail.customer.phone ?? '').trim();
+
+  let reminderDisabledReason: string | null = null;
+  if (!whatsappStatus?.configured) {
+    reminderDisabledReason = 'WhatsApp bridge not configured on the server.';
+  } else if (whatsappStatus.unreachable) {
+    reminderDisabledReason = 'WhatsApp bridge service is unreachable.';
+  } else if (!whatsappStatus.status?.ready) {
+    reminderDisabledReason =
+      'WhatsApp not connected — open Settings to scan the QR code.';
+  } else if (!hasPhone) {
+    reminderDisabledReason = `No phone number on file. Add one in Customers to message this ${accountKind}.`;
+  } else if (settled) {
+    reminderDisabledReason = 'Account is settled — nothing to remind about.';
+  }
+  const reminderDisabled = reminderDisabledReason !== null;
+
+  const lastRemindedAt = detail.customer.lastReminderAt ?? null;
 
   return (
     <div className="flex h-full min-h-[480px] flex-col">
@@ -504,9 +583,14 @@ function DetailPanel({
                 .filter(Boolean)
                 .join(' · ') || `${tabLabel} account`}
             </p>
+            {lastRemindedAt ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Last WhatsApp reminder · {formatRelative(lastRemindedAt)}
+              </p>
+            ) : null}
           </div>
         </div>
-        <div className="flex items-start justify-between gap-4 md:justify-end">
+        <div className="flex flex-wrap items-start justify-between gap-3 md:justify-end">
           <div className="text-right">
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
               {positive
@@ -529,27 +613,60 @@ function DetailPanel({
                   : formatCurrency(0)}
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onDownload}
-            disabled={downloading || detail.entries.length === 0}
-            title={
-              detail.entries.length === 0
-                ? 'No transactions to download yet'
-                : 'Download timestamped PDF statement'
-            }
-          >
-            {downloading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            <span className="hidden sm:inline">PDF</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onSendReminder}
+              disabled={reminderDisabled}
+              title={reminderDisabledReason ?? 'Send a WhatsApp payment reminder'}
+              className="bg-emerald-500 hover:bg-emerald-500/90"
+            >
+              <MessageCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Send reminder</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onDownload}
+              disabled={downloading || detail.entries.length === 0}
+              title={
+                detail.entries.length === 0
+                  ? 'No transactions to download yet'
+                  : 'Download timestamped PDF statement'
+              }
+            >
+              {downloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">PDF</span>
+            </Button>
+          </div>
         </div>
       </div>
+
+      {reminderDisabled && whatsappStatus && whatsappStatus.configured && !whatsappStatus.status?.ready ? (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-5 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <span>
+            <MessageCircle className="mr-1 inline h-3.5 w-3.5" />
+            WhatsApp is not connected.{' '}
+            {whatsappStatus.unreachable
+              ? 'The bridge service is unreachable.'
+              : whatsappStatus.status?.message ?? 'Sign in to enable reminders.'}
+          </span>
+          <Link
+            to="/app/settings"
+            className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2 py-1 font-medium hover:bg-amber-500/15"
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            Settings
+          </Link>
+        </div>
+      ) : null}
 
       {/* Transactions */}
       <div className="flex-1 overflow-y-auto p-5">
@@ -918,5 +1035,161 @@ function Field({
       {children}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
+  );
+}
+
+function formatRelative(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diff = Date.now() - then;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function defaultReminderMessage(opts: {
+  customerName: string;
+  companyName: string;
+  amount: number;
+  isReceivable: boolean;
+  contactPhone?: string;
+  contactEmail?: string;
+}): string {
+  const niceName = opts.customerName?.trim() || 'there';
+  const company = opts.companyName?.trim() || 'our team';
+  const amountText = formatCurrency(Math.abs(opts.amount));
+  const contactParts: string[] = [];
+  if (opts.contactPhone) contactParts.push(`call ${opts.contactPhone}`);
+  if (opts.contactEmail) contactParts.push(`email ${opts.contactEmail}`);
+  const contactLine = contactParts.length
+    ? `\n\nFor any clarifications please ${contactParts.join(' or ')}.`
+    : '';
+  if (opts.isReceivable) {
+    return (
+      `Hello ${niceName}, this is a friendly payment reminder from ${company}. ` +
+      `Our records show an outstanding balance of *${amountText}* on your account. ` +
+      `Please clear it at your earliest convenience.${contactLine}\n\n` +
+      `Thank you for your business.`
+    );
+  }
+  return (
+    `Hello ${niceName}, this is a reminder from ${company}. ` +
+    `Our records show a pending payment of *${amountText}* owed to you. ` +
+    `We will release it shortly — please share an updated invoice if anything has changed.${contactLine}`
+  );
+}
+
+function ReminderDialog({
+  open,
+  onOpenChange,
+  detail,
+  company,
+  onSend,
+  sending,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  detail: LedgerCustomerDetail | null;
+  company: Company | null;
+  onSend: (message: string) => void;
+  sending: boolean;
+}) {
+  const balance = detail?.totals.balance ?? 0;
+  const isReceivable = balance > 0;
+
+  const initialMessage = useMemo(
+    () =>
+      detail
+        ? defaultReminderMessage({
+            customerName: detail.customer.name,
+            companyName: company?.name ?? 'our team',
+            amount: balance,
+            isReceivable,
+            contactPhone: company?.phone,
+            contactEmail: company?.email,
+          })
+        : '',
+    [detail, company, balance, isReceivable]
+  );
+
+  const [message, setMessage] = useState(initialMessage);
+
+  useEffect(() => {
+    if (open) setMessage(initialMessage);
+  }, [open, initialMessage]);
+
+  if (!detail) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Send WhatsApp reminder</DialogTitle>
+          <DialogDescription>
+            Sends from your linked WhatsApp number to{' '}
+            <span className="font-medium text-foreground">
+              {detail.customer.phone}
+            </span>{' '}
+            via your self-hosted bridge.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-muted-foreground">
+            Balance:{' '}
+            <span
+              className={cn(
+                'font-display font-semibold',
+                isReceivable ? 'text-destructive' : 'text-emerald-500'
+              )}
+            >
+              {isReceivable
+                ? formatCurrency(balance)
+                : `+${formatCurrency(Math.abs(balance))}`}
+            </span>
+            {' · '}
+            {isReceivable ? 'Customer owes you' : 'You owe this party'}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Message</Label>
+            <Textarea
+              rows={8}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              maxLength={2000}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              You can edit this. Leave blank to use the default template.{' '}
+              <span className="text-foreground/70">{message.length}/2000</span>
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => onSend(message.trim())}
+            disabled={sending || message.trim().length === 0}
+            className="bg-emerald-500 hover:bg-emerald-500/90"
+          >
+            {sending ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <>
+                <MessageCircle className="h-4 w-4" /> Send reminder
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
