@@ -12,9 +12,11 @@ import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import {
   extractFlight,
+  extractFlights,
   normaliseFlight,
   type NormalisedFlight,
 } from '../utils/flightAi';
+void normaliseFlight;
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -250,11 +252,36 @@ async function upsertFromExtraction(
   }
 ): Promise<{ flight: FlightDoc; created: boolean }> {
   let existing: FlightDoc | null = null;
-  if (parsed.pnr) {
-    existing = (await Flight.findOne({ companyId, pnr: parsed.pnr })) as FlightDoc | null;
+
+  // Most precise: PNR + same flightNumber + same calendar day. This is the
+  // ONLY key that uniquely identifies a single segment of a round-trip or
+  // multi-city booking (where every leg shares the PNR).
+  if (parsed.pnr && parsed.flightNumber && parsed.departureAt) {
+    const day = parsed.departureAt;
+    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    const dayEnd = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+    existing = (await Flight.findOne({
+      companyId,
+      pnr: parsed.pnr,
+      flightNumber: parsed.flightNumber,
+      departureAt: { $gte: dayStart, $lt: dayEnd },
+    })) as FlightDoc | null;
   }
+
+  // Next: PNR + same flightNumber (no date constraint). Status emails often
+  // omit the exact date; this catches the same leg without overwriting other
+  // legs of the same PNR.
+  if (!existing && parsed.pnr && parsed.flightNumber) {
+    existing = (await Flight.findOne({
+      companyId,
+      pnr: parsed.pnr,
+      flightNumber: parsed.flightNumber,
+    })) as FlightDoc | null;
+  }
+
+  // Next: same flightNumber on the same calendar day (PNR-less status mail).
   if (!existing && parsed.flightNumber && parsed.departureAt) {
-    const day = new Date(parsed.departureAt);
+    const day = parsed.departureAt;
     const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
     const dayEnd = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
     existing = (await Flight.findOne({
@@ -263,6 +290,16 @@ async function upsertFromExtraction(
       departureAt: { $gte: dayStart, $lt: dayEnd },
     })) as FlightDoc | null;
   }
+
+  // Last-resort: PNR alone, but ONLY if there's exactly one card with this
+  // PNR. If there are multiple legs, we can't safely guess which one a
+  // PNR-only status mail is about, so we don't merge and don't create a
+  // duplicate either — caller can choose to skip.
+  if (!existing && parsed.pnr && !parsed.flightNumber) {
+    const candidates = await Flight.find({ companyId, pnr: parsed.pnr }).limit(2);
+    if (candidates.length === 1) existing = candidates[0] as unknown as FlightDoc;
+  }
+
   if (!existing && metadata.sourceRef) {
     existing = (await Flight.findOne({
       companyId,
@@ -370,6 +407,47 @@ async function upsertFromExtraction(
   return { flight, created: true };
 }
 
+async function persistSegments(
+  companyId: string,
+  segments: NormalisedFlight[],
+  metadata: {
+    source: 'email' | 'pdf' | 'manual';
+    baseSourceRef?: string;
+    emailSubject?: string;
+    emailFrom?: string;
+    emailDate?: Date | null;
+    rawSnippet?: string;
+    pdfName?: string;
+  }
+): Promise<{ flights: FlightDoc[]; created: number; updated: number }> {
+  const flights: FlightDoc[] = [];
+  let created = 0;
+  let updated = 0;
+  for (const seg of segments) {
+    const refSuffix = seg.flightNumber
+      ? `:${seg.flightNumber}`
+      : seg.departureAt
+      ? `:${seg.departureAt.toISOString().slice(0, 10)}`
+      : '';
+    const sourceRef = metadata.baseSourceRef
+      ? `${metadata.baseSourceRef}${refSuffix}`
+      : '';
+    const result = await upsertFromExtraction(companyId, seg, {
+      source: metadata.source,
+      sourceRef,
+      emailSubject: metadata.emailSubject,
+      emailFrom: metadata.emailFrom,
+      emailDate: metadata.emailDate,
+      rawSnippet: metadata.rawSnippet,
+      pdfName: metadata.pdfName,
+    });
+    flights.push(result.flight);
+    if (result.created) created += 1;
+    else updated += 1;
+  }
+  return { flights, created, updated };
+}
+
 router.post(
   '/parse-text',
   validate(parseTextSchema),
@@ -382,16 +460,26 @@ router.post(
       body.date || ''
     }\n\n${body.text}`;
 
-    const parsed = await extractFlight({ apiKey, text: composed });
-    const { flight, created } = await upsertFromExtraction(companyId, parsed, {
+    const segments = await extractFlights({ apiKey, text: composed });
+    if (segments.length === 0) {
+      throw ApiError.badRequest("Couldn't find any flight details in that message.");
+    }
+
+    const { flights, created, updated } = await persistSegments(companyId, segments, {
       source: 'email',
-      sourceRef: body.subject ? `subject:${body.subject.slice(0, 180)}` : '',
+      baseSourceRef: body.subject ? `subject:${body.subject.slice(0, 180)}` : '',
       emailSubject: body.subject,
       emailFrom: body.from,
       emailDate: body.date ? new Date(body.date) : new Date(),
       rawSnippet: body.text.slice(0, 1000),
     });
-    res.status(created ? 201 : 200).json({ flight, created });
+    res.status(created > 0 ? 201 : 200).json({
+      flight: flights[0],
+      flights,
+      created: created > 0,
+      createdCount: created,
+      updatedCount: updated,
+    });
   })
 );
 
@@ -404,17 +492,32 @@ router.post(
     const body = req.body as z.infer<typeof parsePdfSchema>;
     const base64 = body.base64.replace(/^data:.*?;base64,/, '');
 
-    const parsed = await extractFlight({
+    const segments = await extractFlights({
       apiKey,
       pdf: { base64, mimeType: body.mimeType || 'application/pdf' },
     });
-    const { flight, created } = await upsertFromExtraction(companyId, parsed, {
+    if (segments.length === 0) {
+      throw ApiError.badRequest("Couldn't find any flight details in that PDF.");
+    }
+
+    const { flights, created, updated } = await persistSegments(companyId, segments, {
       source: 'pdf',
+      baseSourceRef: `pdf:${body.fileName}`,
       pdfName: body.fileName,
     });
-    res.status(created ? 201 : 200).json({ flight, created });
+    res.status(created > 0 ? 201 : 200).json({
+      flight: flights[0],
+      flights,
+      created: created > 0,
+      createdCount: created,
+      updatedCount: updated,
+    });
   })
 );
+
+// keep the back-compat helper referenced so tree-shaking doesn't choke on
+// unused imports if a future caller re-introduces it.
+void extractFlight;
 
 // Cheap pre-filter to avoid spending AI tokens on obvious non-flight mail.
 // IMPORTANT: keep this VERY narrow. Indian OTAs and airlines often send
@@ -470,14 +573,19 @@ function shouldHardSkip(subject: string, fromText: string): boolean {
 
 // Strip HTML mail bodies down to plain text so OTA confirmations
 // (Goibibo / MMT / Cleartrip / EaseMyTrip etc., which are HTML-only) become
-// readable for the model and don't blow past the truncation budget.
+// readable for the model and don't blow past the truncation budget. We
+// preserve table structure with ' | ' between cells and a newline between
+// rows, because most flight emails arrange the booking as a table.
 function htmlToPlainText(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(br|hr)\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|tr|li|h[1-6]|td)>/gi, '\n')
+    .replace(/<\/(td|th)>/gi, ' | ')
+    .replace(/<\/(tr)>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|table|tbody|thead|article|section)>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
@@ -487,6 +595,7 @@ function htmlToPlainText(html: string): string {
     .replace(/&#39;/gi, "'")
     .replace(/&apos;/gi, "'")
     .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ \| (?: \| )+/g, ' | ')
     .replace(/\s+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -589,6 +698,7 @@ router.post(
       fromText: string;
       dateValue: Date;
       cleanBody: string;
+      pdfAttachment: { base64: string; mimeType: string; filename: string } | null;
     }
 
     try {
@@ -622,6 +732,33 @@ router.post(
             // 24 KB is enough for the largest Indian OTA confirmation we've seen
             // after HTML stripping (Goibibo runs ~18 KB).
             const cleanBody = bodyRaw.replace(/[ \t]+/g, ' ').slice(0, 24_000);
+
+            // Many airlines (IndiGo, SpiceJet, Air India) send the actual
+            // e-ticket as a PDF attachment with a near-empty mail body. Grab
+            // the first reasonably-sized PDF and forward it to Gemini if the
+            // body alone doesn't already include a PNR.
+            let pdfAttachment: PreparedMessage['pdfAttachment'] = null;
+            const attachments = Array.isArray(parsedMail.attachments)
+              ? parsedMail.attachments
+              : [];
+            for (const att of attachments) {
+              const isPdf =
+                att.contentType === 'application/pdf' ||
+                /\.pdf$/i.test(att.filename ?? '');
+              if (!isPdf) continue;
+              const buf = att.content as Buffer | undefined;
+              if (!buf || !Buffer.isBuffer(buf)) continue;
+              // Skip huge attachments (>6 MB) so we don't blow up the AI
+              // request payload.
+              if (buf.length > 6 * 1024 * 1024) continue;
+              pdfAttachment = {
+                base64: buf.toString('base64'),
+                mimeType: att.contentType || 'application/pdf',
+                filename: att.filename || 'ticket.pdf',
+              };
+              break;
+            }
+
             prepared.push({
               uid,
               messageId: message.envelope?.messageId ?? `uid-${uid}`,
@@ -629,6 +766,7 @@ router.post(
               fromText,
               dateValue,
               cleanBody,
+              pdfAttachment,
             });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -659,22 +797,50 @@ router.post(
 
           try {
             const composed = `Subject: ${msg.subject}\nFrom: ${msg.fromText}\nDate: ${msg.dateValue.toISOString()}\n\n${msg.cleanBody}`;
-            const parsed = await extractFlight({ apiKey, text: composed });
 
-            if (!parsed.pnr && !parsed.flightNumber) {
+            // First pass: body text (cheaper, covers most OTA confirmations).
+            let segments = msg.cleanBody.trim()
+              ? await extractFlights({ apiKey, text: composed })
+              : [];
+
+            // Second pass: if the body gave us nothing and the mail has a PDF
+            // attachment, parse the PDF directly. IndiGo / SpiceJet / Air
+            // India e-tickets land this way.
+            if (segments.length === 0 && msg.pdfAttachment) {
+              try {
+                segments = await extractFlights({
+                  apiKey,
+                  pdf: msg.pdfAttachment,
+                });
+              } catch (pdfErr) {
+                const m = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+                errors.push(`uid ${msg.uid} pdf attachment: ${m.slice(0, 200)}`);
+              }
+            }
+
+            if (segments.length === 0) {
               summary.skipped += 1;
             } else {
-              const result = await upsertFromExtraction(companyId, parsed, {
-                source: 'email',
-                sourceRef: `imap:${msg.messageId}`,
-                emailSubject: msg.subject,
-                emailFrom: msg.fromText,
-                emailDate: msg.dateValue,
-                rawSnippet: msg.cleanBody,
-              });
-              summary.parsed += 1;
-              if (result.created) summary.created += 1;
-              else summary.updated += 1;
+              for (const seg of segments) {
+                // Make sourceRef unique-per-segment so the partial unique
+                // index doesn't collide for multi-leg bookings.
+                const refSuffix = seg.flightNumber
+                  ? `:${seg.flightNumber}`
+                  : seg.departureAt
+                  ? `:${seg.departureAt.toISOString().slice(0, 10)}`
+                  : '';
+                const result = await upsertFromExtraction(companyId, seg, {
+                  source: 'email',
+                  sourceRef: `imap:${msg.messageId}${refSuffix}`,
+                  emailSubject: msg.subject,
+                  emailFrom: msg.fromText,
+                  emailDate: msg.dateValue,
+                  rawSnippet: msg.cleanBody || `[PDF attachment: ${msg.pdfAttachment?.filename ?? ''}]`,
+                });
+                summary.parsed += 1;
+                if (result.created) summary.created += 1;
+                else summary.updated += 1;
+              }
             }
             if (!newestProcessedAt || msg.dateValue > newestProcessedAt) {
               newestProcessedAt = msg.dateValue;

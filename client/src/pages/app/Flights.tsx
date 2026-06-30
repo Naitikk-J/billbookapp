@@ -975,7 +975,12 @@ function PdfUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     mutationFn: async () => {
       if (!file) throw new Error('Pick a PDF first');
       const base64 = await fileToBase64(file);
-      const res = await api.post<{ flight: Flight; created: boolean }>('/flights/parse-pdf', {
+      const res = await api.post<{
+        flight: Flight;
+        flights?: Flight[];
+        createdCount?: number;
+        updatedCount?: number;
+      }>('/flights/parse-pdf', {
         fileName: file.name,
         mimeType: file.type || 'application/pdf',
         base64,
@@ -984,7 +989,16 @@ function PdfUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['flights'] });
-      toast.success(`Ticket parsed · ${data.flight.flightNumber || data.flight.pnr || 'card created'}`);
+      const count = data.flights?.length ?? 1;
+      if (count > 1) {
+        toast.success(
+          `Ticket parsed · ${count} segments · ${data.createdCount ?? 0} new, ${data.updatedCount ?? 0} updated`
+        );
+      } else {
+        toast.success(
+          `Ticket parsed · ${data.flight.flightNumber || data.flight.pnr || 'card created'}`
+        );
+      }
       onOpenChange(false);
       setFile(null);
     },
@@ -1073,7 +1087,13 @@ function EmailPasteDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 
   const parse = useMutation({
     mutationFn: async () => {
-      const res = await api.post<{ flight: Flight; created: boolean }>('/flights/parse-text', {
+      const res = await api.post<{
+        flight: Flight;
+        flights?: Flight[];
+        created: boolean;
+        createdCount?: number;
+        updatedCount?: number;
+      }>('/flights/parse-text', {
         subject,
         from,
         text,
@@ -1083,11 +1103,18 @@ function EmailPasteDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['flights'] });
-      toast.success(
-        data.created
-          ? `Added ${data.flight.flightNumber || data.flight.pnr || 'flight'} to the board`
-          : `Updated ${data.flight.flightNumber || data.flight.pnr || 'flight'}`
-      );
+      const count = data.flights?.length ?? 1;
+      if (count > 1) {
+        toast.success(
+          `Parsed ${count} segments · ${data.createdCount ?? 0} new, ${data.updatedCount ?? 0} updated`
+        );
+      } else {
+        toast.success(
+          data.created
+            ? `Added ${data.flight.flightNumber || data.flight.pnr || 'flight'} to the board`
+            : `Updated ${data.flight.flightNumber || data.flight.pnr || 'flight'}`
+        );
+      }
       onOpenChange(false);
       setSubject('');
       setFrom('');

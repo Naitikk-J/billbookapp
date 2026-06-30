@@ -9,11 +9,12 @@ Inputs are real mail bodies from Indian OTAs and airlines:
 - Airlines: IndiGo (6E), Air India (AI), Air India Express (IX), Vistara (UK, legacy), SpiceJet (SG), Akasa Air (QP), Star Air (S5/OG), AIX Connect, Alliance Air (9I), Go First (G8, defunct), Air Asia India.
 Many of these mails are HTML-only and have heavy marketing / footer content. The actual flight block usually appears once and is short. Search the WHOLE body — confirmations from Goibibo / MMT / Cleartrip often bury the PNR, sector and times after a long banner. Tabular layouts ("From / To / Date / Flight / PNR / Departure / Arrival") are common — read them as columns.
 
-Given a flight ticket PDF or one such email body (any English including Indian English; possibly multi-segment), decide whether it describes a real flight booking or status update. If it does NOT (newsletter, deal alert, OTP, password reset, generic loyalty mail, hotel/rail/bus/cab booking, anything non-flight), return an object with empty pnr AND empty flightNumber so the system can skip it. Do not invent data. Pull data only from what you can see.
+Given a flight ticket PDF or one such email body (any English including Indian English; possibly multi-segment), decide whether it describes a real flight booking or status update. If it does NOT (newsletter, deal alert, OTP, password reset, generic loyalty mail, hotel/rail/bus/cab booking, anything non-flight), return { "flights": [] } so the system can skip it. Do not invent data. Pull data only from what you can see.
 
-If it IS a flight email, extract a single primary flight segment using these rules:
+If it IS a flight email/ticket, return EVERY distinct flight segment under "flights" using these rules:
 - Output ONLY valid JSON matching the schema. No prose, no markdown.
-- If multiple segments, pick the next upcoming one (or the latest if all are past).
+- A round trip = TWO segments (outbound + return). A 2-stop multi-city = THREE segments. Codeshare connections each become their own segment.
+- All segments share the same PNR. Differentiate them by flightNumber + departure date.
 - TIMES — return ISO-8601 strings exactly as printed in the source:
     * If the source gives a timezone offset (e.g. "14:35 IST", "09:00 GMT+5:30"), return ISO WITH that offset, e.g. "2026-06-30T14:35:00+05:30".
     * If the source gives only a clock time with NO timezone, return ISO WITHOUT any 'Z' and WITHOUT any offset, e.g. "2026-06-30T14:35:00". Downstream code will treat this as Asia/Kolkata (IST, +05:30). Never append 'Z'. Never convert to UTC yourself.
@@ -35,7 +36,7 @@ const passengerSchema = {
   },
 };
 
-export const flightJsonSchema = {
+const flightSegmentSchema = {
   type: SchemaType.OBJECT,
   properties: {
     pnr: { type: SchemaType.STRING, description: 'PNR / booking reference. Uppercase 6 chars typical.' },
@@ -64,6 +65,18 @@ export const flightJsonSchema = {
     passengers: { type: SchemaType.ARRAY, items: passengerSchema },
     status: { type: SchemaType.STRING, description: `One of: ${FLIGHT_STATUSES.join(', ')}` },
     statusNote: { type: SchemaType.STRING },
+  },
+};
+
+export const flightJsonSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    flights: {
+      type: SchemaType.ARRAY,
+      description:
+        'Every distinct flight segment described in the source. For a round trip return BOTH legs. For multi-city return one entry per sector. Empty array if the source is not flight-related.',
+      items: flightSegmentSchema,
+    },
   },
 } as const;
 
@@ -195,7 +208,7 @@ export interface AiInput {
 
 const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
 
-export async function extractFlight(input: AiInput): Promise<NormalisedFlight> {
+export async function extractFlights(input: AiInput): Promise<NormalisedFlight[]> {
   if (!input.apiKey) {
     throw new Error('Gemini API key not configured. Add one in Settings → AI assistant.');
   }
@@ -229,15 +242,30 @@ export async function extractFlight(input: AiInput): Promise<NormalisedFlight> {
         parts.push({
           inlineData: { data: input.pdf.base64, mimeType: input.pdf.mimeType },
         });
-        parts.push({ text: 'Extract the flight details from the attached ticket PDF.' });
+        parts.push({ text: 'Extract every flight segment from the attached ticket PDF.' });
       }
 
       const result = await model.generateContent({
         contents: [{ role: 'user', parts }],
       });
       const text = result.response.text();
-      const parsed = JSON.parse(text) as Partial<ParsedFlight>;
-      return normaliseFlight(parsed);
+      const parsedDoc = JSON.parse(text) as
+        | { flights?: Array<Partial<ParsedFlight>> }
+        | Partial<ParsedFlight>;
+
+      // Tolerate legacy single-object responses just in case.
+      const rawSegments: Array<Partial<ParsedFlight>> = Array.isArray(
+        (parsedDoc as { flights?: unknown }).flights
+      )
+        ? ((parsedDoc as { flights: Array<Partial<ParsedFlight>> }).flights ?? [])
+        : (parsedDoc as Partial<ParsedFlight>).pnr ||
+          (parsedDoc as Partial<ParsedFlight>).flightNumber
+        ? [parsedDoc as Partial<ParsedFlight>]
+        : [];
+
+      return rawSegments
+        .map((s) => normaliseFlight(s))
+        .filter((s) => s.pnr || s.flightNumber);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       lastError = message;
@@ -247,4 +275,13 @@ export async function extractFlight(input: AiInput): Promise<NormalisedFlight> {
   }
 
   throw new Error(`Flight extraction failed: ${lastError || 'unknown error'}`);
+}
+
+// Back-compat wrapper for callers that only want the primary segment.
+export async function extractFlight(input: AiInput): Promise<NormalisedFlight> {
+  const all = await extractFlights(input);
+  if (all.length === 0) {
+    return normaliseFlight({});
+  }
+  return all[0];
 }
