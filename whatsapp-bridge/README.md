@@ -53,24 +53,48 @@ All calls require `Authorization: Bearer <token>` (except `/health`).
 
 Phone numbers can be free-form (`+91 98765 43210`, `9876543210`, `0987654321`, `9198765 43210`). 10-digit numbers are assumed Indian and prefixed with `91`.
 
-## Running on a VPS
+## Deploying to Render (recommended for 24/7)
 
-The simplest setup is `pm2`:
+Render's free "Web Service" plan runs this Dockerfile with an HTTPS URL out of the box. Trade-offs of the free tier:
+
+- **Sleeps after ~15 min of no traffic.** First request wakes it in ~30–60 s.
+- **No persistent disk.** The `.wwebjs_auth/` session is wiped on every cold boot, so you re-scan the QR after each wake. The QR is shown right in **Settings → WhatsApp reminders**, so this is one tap.
+- **512 MB RAM.** Chromium is tuned to fit; if it OOMs, upgrade to the $7/mo Starter plan (which also gets you a persistent disk → no more re-scans).
+
+Steps:
+
+1. Push this repo to GitHub if you haven't already.
+2. Generate a token: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+3. Go to https://dashboard.render.com → **New** → **Blueprint** → connect the repo → **Root directory: `whatsapp-bridge`**. Render will pick up `whatsapp-bridge/render.yaml`.
+4. When prompted, paste the token into `WHATSAPP_BRIDGE_TOKEN`.
+5. Deploy. Grab the URL Render assigns (e.g. `https://safarmate-whatsapp.onrender.com`).
+6. On Vercel → Safarmate server project → Settings → Environment Variables, set:
+   - `WHATSAPP_BRIDGE_URL=https://safarmate-whatsapp.onrender.com`
+   - `WHATSAPP_BRIDGE_TOKEN=<same token>`
+
+   Redeploy the server so the env vars take effect.
+7. Open Safarmate → **Settings → WhatsApp reminders**. First load shows "Waking the bridge…"; after ~30–60 s the QR appears. Scan it with your phone's *Linked devices* screen. Send Reminder buttons on the Ledger page go live.
+
+Every time Render puts the container to sleep and you next open Safarmate, the Settings card automatically shows a fresh QR — one scan, done.
+
+## Alternative: run on your own always-on machine
+
+If you have a Raspberry Pi, home server, or a laptop that stays on, the cheapest option is **local + Cloudflare Tunnel** (free HTTPS URL, no cloud bill, session persists forever so no re-scans):
 
 ```bash
-npm install -g pm2
-pm2 start "npm run start" --name safarmate-whatsapp -- --silent
-pm2 save
-pm2 startup
-```
+# In one terminal:
+cd whatsapp-bridge
+npm install
+cp .env.example .env  # set WHATSAPP_BRIDGE_TOKEN
+npm run start         # or use pm2 for autorestart
 
-For a public URL, the cleanest free option is Cloudflare Tunnel:
-
-```bash
+# In another terminal:
 cloudflared tunnel --url http://localhost:5555
 ```
 
-Put the resulting `https://...trycloudflare.com` URL into the Safarmate server's `WHATSAPP_BRIDGE_URL`.
+Put the `https://...trycloudflare.com` URL into the Safarmate server env as `WHATSAPP_BRIDGE_URL`.
+
+For a permanent Cloudflare Tunnel (custom domain, survives reboots), see the [Cloudflare Zero Trust docs](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/).
 
 ## Notes on whatsapp-web.js
 

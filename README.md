@@ -18,19 +18,31 @@ Add `GMAIL_ADDRESS` / Gmail App Password in Settings → Flight automation. Add 
 
 The Ledger detail panel has a **Send reminder** button next to the PDF download. One click opens a pre-filled message ("Hello {name}, you have an outstanding balance of ₹X with {company}…") that goes out over WhatsApp.
 
-Because Vercel serverless functions can't keep a Puppeteer browser alive, sending lives in a **separate `whatsapp-bridge/` service** that runs `whatsapp-web.js` with persistent local session storage. Run it on your own machine or a small VPS; the Vercel server talks to it over the network with a shared bearer token.
+Because Vercel serverless functions can't keep a Puppeteer browser alive, sending lives in a **separate `whatsapp-bridge/` service** that runs `whatsapp-web.js` with local session storage. Deploy it once, point the Vercel server at it with a shared bearer token, and you're set.
+
+### One-click deploy on Render (free)
+
+The repo ships with `whatsapp-bridge/render.yaml`, a Blueprint that provisions the bridge on Render's free Web Service tier in one click:
+
+1. Push to GitHub → https://dashboard.render.com → **New → Blueprint** → connect this repo, root directory `whatsapp-bridge`.
+2. Set `WHATSAPP_BRIDGE_TOKEN` (32-byte hex) when prompted.
+3. Copy the deploy URL and set it on the Vercel server as `WHATSAPP_BRIDGE_URL` (+ the same token as `WHATSAPP_BRIDGE_TOKEN`).
+4. Open Safarmate → **Settings → WhatsApp reminders** → scan the QR that appears.
+
+Trade-off on Render's free plan: the container sleeps after 15 min idle and has no disk, so the WhatsApp session is wiped on every cold boot. Next time you open Safarmate the Settings card auto-shows a fresh QR — one scan and reminders are live again. Upgrade to Render Starter ($7/mo) for persistent disk (no more re-scans) and always-on.
+
+### Local dev
 
 ```bash
 cd whatsapp-bridge
 npm install
-cp .env.example .env
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  # set WHATSAPP_BRIDGE_TOKEN
-npm run dev
+cp .env.example .env   # set WHATSAPP_BRIDGE_TOKEN
+npm run dev            # exposes http://127.0.0.1:5555
 ```
 
-Then set `WHATSAPP_BRIDGE_URL` and `WHATSAPP_BRIDGE_TOKEN` on the Safarmate server (Vercel env vars), open **Settings → WhatsApp reminders**, scan the QR with your phone's *Linked devices* screen, and the reminder button goes live across the ledger.
+Then `WHATSAPP_BRIDGE_URL=http://localhost:5555` in `server/.env`.
 
-Security: the bearer token only ever sits in the bridge `.env` and the server's env vars — the browser only ever sees the WhatsApp status and a transient QR PNG. The bridge defaults to binding `127.0.0.1`; if you expose it to the internet you must put it behind TLS (Cloudflare Tunnel, Caddy + Let's Encrypt, etc.). Full details in `whatsapp-bridge/README.md`.
+Security: the bearer token only sits in the bridge env and the server env — the browser only ever sees WhatsApp ready/QR state. The bridge binds `127.0.0.1` locally by default; when self-hosting on a VPS you must front it with TLS (Render/Fly do this automatically). Full details in `whatsapp-bridge/README.md`.
 
 ## Stack
 

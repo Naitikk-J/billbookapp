@@ -1,0 +1,64 @@
+# Fly.io app config for the Safarmate WhatsApp bridge.
+#
+# This service MUST stay running 24/7 — if the machine stops, the WhatsApp
+# Web session disconnects and you'd have to re-scan the QR. So we disable
+# auto-stop and pin one machine alive at all times.
+#
+# Persistent volume keeps the .wwebjs_auth/ session blobs across deploys.
+#
+# First-time setup (run from the whatsapp-bridge/ directory):
+#
+#   fly launch --copy-config --no-deploy             # pick app name, region (bom)
+#   fly volumes create whatsapp_data --size 1 --region bom
+#   fly secrets set WHATSAPP_BRIDGE_TOKEN=<32-byte-hex-token>
+#   fly deploy
+#   fly logs                                          # watch it boot, scan QR via Settings page
+#
+# Pricing on the shared-cpu-1x@1024MB plan is roughly $4/month.
+
+app = "safarmate-whatsapp"            # change this to a unique name on `fly launch`
+primary_region = "bom"                # Mumbai — closest to most users; pick yours
+
+[build]
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "5555"
+  NODE_ENV = "production"
+  PUPPETEER_SKIP_DOWNLOAD = "true"
+  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium"
+  WHATSAPP_SESSION_DIR = "/data/wwebjs_auth"
+
+# The token is stored as a Fly secret, NOT in this file. Set it with:
+#   fly secrets set WHATSAPP_BRIDGE_TOKEN=<hex>
+
+[[mounts]]
+  source = "whatsapp_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port = 5555
+  force_https = true
+  auto_stop_machines = false           # critical — must not stop
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 50
+
+# Hit /health every 30s; Fly will alert you in the dashboard if it fails.
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "30s"
+  method = "GET"
+  path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  cpus = 1

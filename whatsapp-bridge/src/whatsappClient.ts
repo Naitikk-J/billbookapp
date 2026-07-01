@@ -112,6 +112,7 @@ class WhatsAppService {
   }
 
   private buildClient(): Client {
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'safarmate',
@@ -119,11 +120,27 @@ class WhatsAppService {
       }),
       puppeteer: {
         headless: true,
+        executablePath,
+        // Aggressive memory trimming so WhatsApp Web fits in a 512 MB
+        // Render free-tier container. If you upgrade to a bigger plan,
+        // dropping --single-process makes crashes less fatal.
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-features=site-per-process,TranslateUI,BlinkGenPropertyTrees',
+          '--metrics-recording-only',
+          '--mute-audio',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
         ],
       },
     });

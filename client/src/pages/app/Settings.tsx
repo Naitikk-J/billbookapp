@@ -61,6 +61,9 @@ export default function SettingsPage() {
       const data = q.state.data as WhatsAppStatusResponse | undefined;
       if (!data?.configured) return false;
       if (data.status?.ready) return 30_000;
+      // Bridge is asleep on Render — keep hammering /status so the container
+      // wakes up quickly and we surface the QR the moment it's ready.
+      if (data.unreachable || !data.status) return 3_000;
       return 4_000;
     },
   });
@@ -293,14 +296,25 @@ function WhatsAppCard({
             </p>
           </div>
         ) : status.unreachable || !status.status ? (
-          <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
-            <div>
-              <p className="font-medium">Bridge unreachable.</p>
-              <p className="mt-1 text-xs">{status.reason ?? 'The bridge service is offline.'}</p>
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 font-medium">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Waking the bridge…
+                </p>
+                <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-300/90">
+                  Free-tier hosts (Render, Fly, etc.) sleep after idle time and take
+                  <span className="font-medium"> 30–60 seconds</span> to spin back up. The QR will
+                  appear here automatically once it's awake.
+                </p>
+                {status.reason ? (
+                  <p className="mt-2 text-[11px] font-mono opacity-70">{status.reason}</p>
+                ) : null}
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={onRefresh}>
+                <RefreshCw className="h-4 w-4" /> Retry
+              </Button>
             </div>
-            <Button type="button" size="sm" variant="outline" onClick={onRefresh}>
-              <RefreshCw className="h-4 w-4" /> Retry
-            </Button>
           </div>
         ) : status.status.state === 'ready' ? (
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
