@@ -65,7 +65,7 @@ Steps:
 
 1. Push this repo to GitHub if you haven't already.
 2. Generate a token: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-3. Go to https://dashboard.render.com → **New** → **Blueprint** → connect the repo → **Root directory: `whatsapp-bridge`**. Render will pick up `whatsapp-bridge/render.yaml`.
+3. Go to https://dashboard.render.com → **New** → **Blueprint** → connect the repo (branch `main`). Render auto-detects the repo-root `render.yaml`; do **not** set a root directory — the Blueprint itself points at `./whatsapp-bridge/Dockerfile`.
 4. When prompted, paste the token into `WHATSAPP_BRIDGE_TOKEN`.
 5. Deploy. Grab the URL Render assigns (e.g. `https://safarmate-whatsapp.onrender.com`).
 6. On Vercel → Safarmate server project → Settings → Environment Variables, set:

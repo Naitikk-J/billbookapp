@@ -22,9 +22,9 @@ Because Vercel serverless functions can't keep a Puppeteer browser alive, sendin
 
 ### One-click deploy on Render (free)
 
-The repo ships with `whatsapp-bridge/render.yaml`, a Blueprint that provisions the bridge on Render's free Web Service tier in one click:
+The repo ships with a root-level `render.yaml` Blueprint that provisions the bridge on Render's free Web Service tier in one click:
 
-1. Push to GitHub → https://dashboard.render.com → **New → Blueprint** → connect this repo, root directory `whatsapp-bridge`.
+1. Push to GitHub → https://dashboard.render.com → **New → Blueprint** → connect this repo (branch `main`). Render auto-detects `/render.yaml`.
 2. Set `WHATSAPP_BRIDGE_TOKEN` (32-byte hex) when prompted.
 3. Copy the deploy URL and set it on the Vercel server as `WHATSAPP_BRIDGE_URL` (+ the same token as `WHATSAPP_BRIDGE_TOKEN`).
 4. Open Safarmate → **Settings → WhatsApp reminders** → scan the QR that appears.
