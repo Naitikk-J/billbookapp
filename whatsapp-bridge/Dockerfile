@@ -41,9 +41,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Install deps (incl. devDeps so we can `tsc` build), then prune.
+# Install ALL deps (including devDeps like typescript / @types) so we can
+# run `tsc`. We set NODE_ENV=production above, which makes npm skip devDeps
+# by default — --include=dev overrides that just for this step. After the
+# build we `npm prune --omit=dev` to strip them back out of the final image.
 COPY package.json package-lock.json* ./
-RUN npm install --no-audit --no-fund
+RUN npm install --include=dev --no-audit --no-fund
 
 COPY tsconfig.json ./
 COPY src ./src
