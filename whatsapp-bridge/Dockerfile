@@ -10,12 +10,17 @@ ENV NODE_ENV=production \
     PORT=5555 \
     WHATSAPP_MONGO_COLLECTION=whatsapp_session
 
-# Only dumb-init and CA certs — dumb-init makes SIGTERM propagate cleanly on
-# `render deploy stop` and other lifecycle events; ca-certificates lets us
-# talk to Mongo Atlas + WhatsApp over TLS.
+# dumb-init  → clean SIGTERM propagation on Render deploy/stop lifecycles.
+# ca-certificates → TLS to Mongo Atlas + WhatsApp.
+# git → one of Baileys' transitive deps (libsignal-node) is a git+ssh tarball,
+#       not an npm package, so npm shells out to git during install.
+# We also rewrite the ssh:// URL to https:// so anonymous cloning works
+# without needing an SSH key inside the container.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends dumb-init ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends dumb-init ca-certificates git \
+ && rm -rf /var/lib/apt/lists/* \
+ && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/" \
+ && git config --global url."https://github.com/".insteadOf "git@github.com:"
 
 WORKDIR /app
 
