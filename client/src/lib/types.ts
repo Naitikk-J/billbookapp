@@ -26,9 +26,15 @@ export interface Company {
   signatureUrl?: string;
   stampUrl?: string;
   bankName?: string;
+  beneficiaryName?: string;
   accountNumber?: string;
+  accountType?: string;
+  bankBranch?: string;
   ifsc?: string;
   upiId?: string;
+  paymentQrUrl?: string;
+  reminderContactsText?: string;
+  reminderDisclaimer?: string;
   defaultTerms?: string;
   invoicePrefix?: string;
   quotePrefix?: string;

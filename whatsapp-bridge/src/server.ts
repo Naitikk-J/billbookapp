@@ -49,13 +49,17 @@ app.get('/status', (_req, res) => {
 });
 
 app.post('/send', async (req, res) => {
-  const { phone, message } = (req.body ?? {}) as { phone?: string; message?: string };
+  const { phone, message, imageUrl } = (req.body ?? {}) as {
+    phone?: string;
+    message?: string;
+    imageUrl?: string;
+  };
   if (!phone || !message) {
     res.status(400).json({ error: { message: 'phone and message are required' } });
     return;
   }
   try {
-    const result = await whatsapp.sendMessage(phone, message);
+    const result = await whatsapp.sendMessage(phone, message, imageUrl);
     res.json({ ok: true, messageId: result.id });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

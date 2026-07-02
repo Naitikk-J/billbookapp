@@ -137,12 +137,90 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Bank & UPI</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                These details are used on invoices and on WhatsApp payment reminders sent from the Ledger.
+              </p>
             </CardHeader>
             <CardContent className="grid gap-4">
+              <Field label="Beneficiary name">
+                <Input
+                  placeholder="Safarmate Travels LLP"
+                  {...form.register('beneficiaryName')}
+                />
+              </Field>
               <Field label="Bank name"><Input {...form.register('bankName')} /></Field>
-              <Field label="Account number"><Input {...form.register('accountNumber')} /></Field>
-              <Field label="IFSC"><Input {...form.register('ifsc')} /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Account number">
+                  <Input {...form.register('accountNumber')} />
+                </Field>
+                <Field label="Account type">
+                  <Input placeholder="Current / Savings" {...form.register('accountType')} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="IFSC"><Input {...form.register('ifsc')} /></Field>
+                <Field label="Branch">
+                  <Input placeholder="Golbazar, Jabalpur" {...form.register('bankBranch')} />
+                </Field>
+              </div>
               <Field label="UPI ID"><Input placeholder="yourname@upi" {...form.register('upiId')} /></Field>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-emerald-500" /> Payment reminder template
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Customise the WhatsApp reminders sent from the Ledger. Bank &amp; UPI details are pulled
+                automatically from the card above. Add a PhonePe / GPay QR image URL and it'll be attached
+                to the message with the payment text as its caption.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <Field label="Payment QR image URL">
+                <Input
+                  type="url"
+                  placeholder="https://…/phonepe-qr.png"
+                  autoComplete="off"
+                  {...form.register('paymentQrUrl')}
+                />
+                {companyQuery.data?.paymentQrUrl ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <img
+                      src={companyQuery.data.paymentQrUrl}
+                      alt="Payment QR preview"
+                      className="h-24 w-24 rounded-md border border-border bg-white p-1 object-contain"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Preview. If this doesn't load, the URL isn't publicly accessible.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Host your QR anywhere with a stable public URL (imgbb, Cloudinary, GitHub raw, etc.).
+                  </p>
+                )}
+              </Field>
+              <Field label="Reminder contacts (one per line)">
+                <Textarea
+                  rows={4}
+                  placeholder={'Sameer - +919711774888\nParv - +919993332626'}
+                  {...form.register('reminderContactsText')}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Free-form. Each line is shown as-is under "For any clarification". Leave blank to
+                  fall back to the company phone / email.
+                </p>
+              </Field>
+              <Field label="Disclaimer line" className="md:col-span-2">
+                <Textarea
+                  rows={2}
+                  placeholder="This is a system-generated message. Please ignore if already paid."
+                  {...form.register('reminderDisclaimer')}
+                />
+              </Field>
             </CardContent>
           </Card>
 
@@ -372,9 +450,17 @@ function WhatsAppCard({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="space-y-1.5">
+    <div className={['space-y-1.5', className].filter(Boolean).join(' ')}>
       <Label>{label}</Label>
       {children}
     </div>

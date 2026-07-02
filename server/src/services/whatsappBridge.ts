@@ -89,11 +89,14 @@ export async function fetchStatus(): Promise<WhatsAppStatus> {
 
 export async function sendMessage(
   phone: string,
-  message: string
+  message: string,
+  imageUrl?: string
 ): Promise<{ messageId: string }> {
+  const body: Record<string, unknown> = { phone, message };
+  if (imageUrl) body.imageUrl = imageUrl;
   const data = await bridgeFetch<{ ok: boolean; messageId: string }>(
     '/send',
-    { method: 'POST', body: { phone, message } }
+    { method: 'POST', body }
   );
   return { messageId: data.messageId };
 }

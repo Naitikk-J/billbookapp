@@ -218,7 +218,8 @@ class WhatsAppService {
 
   async sendMessage(
     rawPhone: string,
-    message: string
+    message: string,
+    imageUrl?: string
   ): Promise<{ id: string }> {
     if (!this.sock) throw new Error('WhatsApp client not initialised');
     if (this.status.state !== 'ready') {
@@ -248,6 +249,27 @@ class WhatsAppService {
         throw err;
       }
       console.warn('[whatsapp] onWhatsApp check failed (continuing):', err);
+    }
+
+    const trimmedImageUrl = (imageUrl ?? '').trim();
+    if (trimmedImageUrl) {
+      // WhatsApp caption limit is 1024 chars. If our message is longer,
+      // send the image as its own message (with a short caption) and
+      // follow up with the full text.
+      const CAPTION_LIMIT = 1024;
+      if (trimmed.length <= CAPTION_LIMIT) {
+        const sent = await this.sock.sendMessage(jid, {
+          image: { url: trimmedImageUrl },
+          caption: trimmed,
+        });
+        return { id: sent?.key.id ?? '' };
+      }
+      await this.sock.sendMessage(jid, {
+        image: { url: trimmedImageUrl },
+        caption: 'Scan the QR to pay via any UPI app.',
+      });
+      const followUp = await this.sock.sendMessage(jid, { text: trimmed });
+      return { id: followUp?.key.id ?? '' };
     }
 
     const sent = await this.sock.sendMessage(jid, { text: trimmed });

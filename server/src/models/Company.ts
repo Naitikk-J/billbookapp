@@ -21,9 +21,19 @@ const companySchema = new Schema(
     signatureUrl: { type: String, default: '' },
     stampUrl: { type: String, default: '' },
     bankName: { type: String, default: '' },
+    beneficiaryName: { type: String, default: '' },
     accountNumber: { type: String, default: '' },
+    accountType: { type: String, default: '' },
+    bankBranch: { type: String, default: '' },
     ifsc: { type: String, default: '' },
     upiId: { type: String, default: '' },
+    paymentQrUrl: { type: String, default: '' },
+    reminderContactsText: { type: String, default: '' },
+    reminderDisclaimer: {
+      type: String,
+      default:
+        'This is a system-generated message. Please ignore if already paid.',
+    },
     defaultTerms: {
       type: String,
       default:

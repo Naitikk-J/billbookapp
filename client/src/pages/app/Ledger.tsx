@@ -1053,36 +1053,106 @@ function formatRelative(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function defaultReminderMessage(opts: {
+interface DefaultReminderContext {
   customerName: string;
   companyName: string;
   amount: number;
   isReceivable: boolean;
-  contactPhone?: string;
-  contactEmail?: string;
-}): string {
+  beneficiaryName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountType?: string;
+  ifsc?: string;
+  bankBranch?: string;
+  upiId?: string;
+  contactsText?: string;
+  disclaimer?: string;
+  fallbackPhone?: string;
+  fallbackEmail?: string;
+}
+
+// Mirrors the server-side buildReminderMessage in server/src/routes/ledger.ts.
+// If you change one, change the other so the preview matches what actually
+// gets sent.
+function defaultReminderMessage(opts: DefaultReminderContext): string {
   const niceName = opts.customerName?.trim() || 'there';
   const company = opts.companyName?.trim() || 'our team';
   const amountText = formatCurrency(Math.abs(opts.amount));
-  const contactParts: string[] = [];
-  if (opts.contactPhone) contactParts.push(`call ${opts.contactPhone}`);
-  if (opts.contactEmail) contactParts.push(`email ${opts.contactEmail}`);
-  const contactLine = contactParts.length
-    ? `\n\nFor any clarifications please ${contactParts.join(' or ')}.`
-    : '';
+
+  const lines: string[] = [];
   if (opts.isReceivable) {
-    return (
-      `Hello ${niceName}, this is a friendly payment reminder from ${company}. ` +
-      `Our records show an outstanding balance of *${amountText}* on your account. ` +
-      `Please clear it at your earliest convenience.${contactLine}\n\n` +
-      `Thank you for your business.`
+    lines.push(
+      `Hello ${niceName}, this is a *gentle payment reminder* from ${company}.`
+    );
+    lines.push('');
+    lines.push(
+      `Our records show an outstanding balance of *${amountText}* on your account.`
+    );
+    lines.push('Please clear it at your earliest convenience.');
+  } else {
+    lines.push(`Hello ${niceName}, this is a reminder from ${company}.`);
+    lines.push('');
+    lines.push(`Our records show a pending payment of *${amountText}* owed to you.`);
+    lines.push(
+      'We will release it shortly — please share an updated invoice if anything has changed.'
     );
   }
-  return (
-    `Hello ${niceName}, this is a reminder from ${company}. ` +
-    `Our records show a pending payment of *${amountText}* owed to you. ` +
-    `We will release it shortly — please share an updated invoice if anything has changed.${contactLine}`
-  );
+
+  const hasBankBlock =
+    opts.isReceivable &&
+    !!(
+      opts.beneficiaryName ||
+      opts.bankName ||
+      opts.accountNumber ||
+      opts.ifsc ||
+      opts.bankBranch
+    );
+  if (hasBankBlock) {
+    lines.push('');
+    lines.push('*Bank details:*');
+    if (opts.beneficiaryName)
+      lines.push(`Beneficiary Name - ${opts.beneficiaryName}`);
+    if (opts.accountNumber) lines.push(`A/c no. - ${opts.accountNumber}`);
+    if (opts.accountType) lines.push(`Type - ${opts.accountType}`);
+    if (opts.ifsc) lines.push(`IFSC Code - ${opts.ifsc}`);
+    if (opts.bankName && !opts.bankBranch)
+      lines.push(`Bank - ${opts.bankName}`);
+    if (opts.bankBranch) lines.push(`Branch - ${opts.bankBranch}`);
+  }
+
+  if (opts.isReceivable && opts.upiId) {
+    lines.push('');
+    lines.push(`*UPI:* ${opts.upiId}`);
+  }
+
+  const contactsText = (opts.contactsText ?? '').trim();
+  if (opts.isReceivable && contactsText) {
+    lines.push('');
+    lines.push('*For any clarification:*');
+    for (const rawLine of contactsText.split(/\r?\n/)) {
+      const trimmed = rawLine.trim();
+      if (trimmed) lines.push(trimmed);
+    }
+  } else if (opts.isReceivable && !contactsText) {
+    const fallback: string[] = [];
+    if (opts.fallbackPhone) fallback.push(`call ${opts.fallbackPhone}`);
+    if (opts.fallbackEmail) fallback.push(`email ${opts.fallbackEmail}`);
+    if (fallback.length) {
+      lines.push('');
+      lines.push(`For any clarification, please ${fallback.join(' or ')}.`);
+    }
+  }
+
+  lines.push('');
+  lines.push(opts.isReceivable ? 'Thank you for your business.' : 'Thank you.');
+
+  const disclaimer = (opts.disclaimer ?? '').trim();
+  if (disclaimer) {
+    lines.push('');
+    lines.push(`_${disclaimer}_`);
+  }
+
+  return lines.join('\n');
 }
 
 function ReminderDialog({
@@ -1111,12 +1181,26 @@ function ReminderDialog({
             companyName: company?.name ?? 'our team',
             amount: balance,
             isReceivable,
-            contactPhone: company?.phone,
-            contactEmail: company?.email,
+            beneficiaryName: company?.beneficiaryName?.trim() || company?.name,
+            bankName: company?.bankName,
+            accountNumber: company?.accountNumber,
+            accountType: company?.accountType,
+            ifsc: company?.ifsc,
+            bankBranch: company?.bankBranch,
+            upiId: company?.upiId,
+            contactsText: company?.reminderContactsText,
+            disclaimer: company?.reminderDisclaimer,
+            fallbackPhone: company?.phone,
+            fallbackEmail: company?.email,
           })
         : '',
     [detail, company, balance, isReceivable]
   );
+
+  const qrUrl =
+    isReceivable && company?.paymentQrUrl?.trim()
+      ? company.paymentQrUrl.trim()
+      : '';
 
   const [message, setMessage] = useState(initialMessage);
 
@@ -1155,10 +1239,25 @@ function ReminderDialog({
             {' · '}
             {isReceivable ? 'Customer owes you' : 'You owe this party'}
           </div>
+          {qrUrl ? (
+            <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
+              <img
+                src={qrUrl}
+                alt="Payment QR attachment preview"
+                className="h-16 w-16 rounded-md border border-border bg-white p-1 object-contain"
+              />
+              <div className="text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Payment QR will be attached</p>
+                <p className="mt-0.5">
+                  The QR image is sent as the WhatsApp media and the text below becomes its caption.
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="space-y-1.5">
             <Label>Message</Label>
             <Textarea
-              rows={8}
+              rows={10}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               maxLength={2000}

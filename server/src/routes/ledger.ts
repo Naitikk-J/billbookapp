@@ -225,36 +225,106 @@ function formatINR(amount: number): string {
   }
 }
 
-function buildReminderMessage(opts: {
+interface ReminderTemplateContext {
   customerName: string;
   companyName: string;
   amount: number;
   isReceivable: boolean;
-  contactPhone?: string;
-  contactEmail?: string;
-}): string {
+  beneficiaryName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountType?: string;
+  ifsc?: string;
+  bankBranch?: string;
+  upiId?: string;
+  contactsText?: string;
+  disclaimer?: string;
+  // Fallbacks for when no named contacts are configured.
+  fallbackPhone?: string;
+  fallbackEmail?: string;
+}
+
+function buildReminderMessage(opts: ReminderTemplateContext): string {
   const niceName = opts.customerName?.trim() || 'there';
   const company = opts.companyName?.trim() || 'our team';
   const amountText = formatINR(Math.abs(opts.amount));
-  const contactParts: string[] = [];
-  if (opts.contactPhone) contactParts.push(`call ${opts.contactPhone}`);
-  if (opts.contactEmail) contactParts.push(`email ${opts.contactEmail}`);
-  const contactLine = contactParts.length
-    ? `\n\nFor any clarifications please ${contactParts.join(' or ')}.`
-    : '';
+
+  const lines: string[] = [];
   if (opts.isReceivable) {
-    return (
-      `Hello ${niceName}, this is a friendly payment reminder from ${company}. ` +
-      `Our records show an outstanding balance of *${amountText}* on your account. ` +
-      `Please clear it at your earliest convenience.${contactLine}\n\n` +
-      `Thank you for your business.`
+    lines.push(
+      `Hello ${niceName}, this is a *gentle payment reminder* from ${company}.`
+    );
+    lines.push('');
+    lines.push(
+      `Our records show an outstanding balance of *${amountText}* on your account.`
+    );
+    lines.push('Please clear it at your earliest convenience.');
+  } else {
+    lines.push(
+      `Hello ${niceName}, this is a reminder from ${company}.`
+    );
+    lines.push('');
+    lines.push(
+      `Our records show a pending payment of *${amountText}* owed to you.`
+    );
+    lines.push(
+      'We will release it shortly — please share an updated invoice if anything has changed.'
     );
   }
-  return (
-    `Hello ${niceName}, this is a reminder from ${company}. ` +
-    `Our records show a pending payment of *${amountText}* owed to you. ` +
-    `We will release it shortly — please share an updated invoice if anything has changed.${contactLine}`
-  );
+
+  // Bank block — only render for receivables (customer paying us).
+  const hasBankBlock =
+    opts.isReceivable &&
+    (opts.beneficiaryName ||
+      opts.bankName ||
+      opts.accountNumber ||
+      opts.ifsc ||
+      opts.bankBranch);
+  if (hasBankBlock) {
+    lines.push('');
+    lines.push('*Bank details:*');
+    if (opts.beneficiaryName)
+      lines.push(`Beneficiary Name - ${opts.beneficiaryName}`);
+    if (opts.accountNumber) lines.push(`A/c no. - ${opts.accountNumber}`);
+    if (opts.accountType) lines.push(`Type - ${opts.accountType}`);
+    if (opts.ifsc) lines.push(`IFSC Code - ${opts.ifsc}`);
+    if (opts.bankName && !opts.bankBranch) lines.push(`Bank - ${opts.bankName}`);
+    if (opts.bankBranch) lines.push(`Branch - ${opts.bankBranch}`);
+  }
+
+  if (opts.isReceivable && opts.upiId) {
+    lines.push('');
+    lines.push(`*UPI:* ${opts.upiId}`);
+  }
+
+  const contactsText = (opts.contactsText ?? '').trim();
+  if (opts.isReceivable && contactsText) {
+    lines.push('');
+    lines.push('*For any clarification:*');
+    for (const rawLine of contactsText.split(/\r?\n/)) {
+      const trimmed = rawLine.trim();
+      if (trimmed) lines.push(trimmed);
+    }
+  } else if (opts.isReceivable && !contactsText) {
+    const fallback: string[] = [];
+    if (opts.fallbackPhone) fallback.push(`call ${opts.fallbackPhone}`);
+    if (opts.fallbackEmail) fallback.push(`email ${opts.fallbackEmail}`);
+    if (fallback.length) {
+      lines.push('');
+      lines.push(`For any clarification, please ${fallback.join(' or ')}.`);
+    }
+  }
+
+  lines.push('');
+  lines.push(opts.isReceivable ? 'Thank you for your business.' : 'Thank you.');
+
+  const disclaimer = (opts.disclaimer ?? '').trim();
+  if (disclaimer) {
+    lines.push('');
+    lines.push(`_${disclaimer}_`);
+  }
+
+  return lines.join('\n');
 }
 
 router.post(
@@ -332,11 +402,28 @@ router.post(
         companyName,
         amount: balance,
         isReceivable,
-        contactPhone: company?.phone ?? undefined,
-        contactEmail: company?.email ?? undefined,
+        beneficiaryName:
+          company?.beneficiaryName?.trim() || company?.name || undefined,
+        bankName: company?.bankName ?? undefined,
+        accountNumber: company?.accountNumber ?? undefined,
+        accountType: company?.accountType ?? undefined,
+        ifsc: company?.ifsc ?? undefined,
+        bankBranch: company?.bankBranch ?? undefined,
+        upiId: company?.upiId ?? undefined,
+        contactsText: company?.reminderContactsText ?? undefined,
+        disclaimer: company?.reminderDisclaimer ?? undefined,
+        fallbackPhone: company?.phone ?? undefined,
+        fallbackEmail: company?.email ?? undefined,
       });
 
-    const { messageId } = await whatsappSend(phone, message);
+    // Attach the payment QR image (if configured) — only on receivable
+    // reminders, since it doesn't make sense on payables.
+    const imageUrl =
+      isReceivable && company?.paymentQrUrl?.trim()
+        ? company.paymentQrUrl.trim()
+        : undefined;
+
+    const { messageId } = await whatsappSend(phone, message, imageUrl);
 
     customer.set('lastReminderAt', new Date());
     await customer.save();
