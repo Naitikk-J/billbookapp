@@ -18,18 +18,20 @@ Add `GMAIL_ADDRESS` / Gmail App Password in Settings → Flight automation. Add 
 
 The Ledger detail panel has a **Send reminder** button next to the PDF download. One click opens a pre-filled message ("Hello {name}, you have an outstanding balance of ₹X with {company}…") that goes out over WhatsApp.
 
-Because Vercel serverless functions can't keep a Puppeteer browser alive, sending lives in a **separate `whatsapp-bridge/` service** that runs `whatsapp-web.js` with local session storage. Deploy it once, point the Vercel server at it with a shared bearer token, and you're set.
+Because Vercel serverless functions can't keep a long-lived WebSocket to WhatsApp open, sending lives in a **separate `whatsapp-bridge/` service** built on [`@whiskeysockets/baileys`](https://github.com/WhiskeySockets/Baileys) (pure JS, no Chromium). The session is persisted to your existing MongoDB Atlas cluster, so the bridge can sleep/wake as much as it wants on a free-tier host — **one QR scan ever**, then the connection restores automatically on cold boot.
 
 ### One-click deploy on Render (free)
 
 The repo ships with a root-level `render.yaml` Blueprint that provisions the bridge on Render's free Web Service tier in one click:
 
 1. Push to GitHub → https://dashboard.render.com → **New → Blueprint** → connect this repo (branch `main`). Render auto-detects `/render.yaml`.
-2. Set `WHATSAPP_BRIDGE_TOKEN` (32-byte hex) when prompted.
+2. Paste two secrets when prompted:
+   - `WHATSAPP_BRIDGE_TOKEN` — a 32-byte hex string (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+   - `MONGODB_URI` — reuse the same connection string your Safarmate server already has (the bridge only touches one collection called `whatsapp_session`)
 3. Copy the deploy URL and set it on the Vercel server as `WHATSAPP_BRIDGE_URL` (+ the same token as `WHATSAPP_BRIDGE_TOKEN`).
 4. Open Safarmate → **Settings → WhatsApp reminders** → scan the QR that appears.
 
-Trade-off on Render's free plan: the container sleeps after 15 min idle and has no disk, so the WhatsApp session is wiped on every cold boot. Next time you open Safarmate the Settings card auto-shows a fresh QR — one scan and reminders are live again. Upgrade to Render Starter ($7/mo) for persistent disk (no more re-scans) and always-on.
+Free-tier behaviour after that: Render puts the container to sleep after ~15 min idle. When Safarmate next polls the bridge, Render wakes it in ~30 s, the bridge restores its WhatsApp session from Mongo, and reminders keep working — **no re-scanning**.
 
 ### Local dev
 

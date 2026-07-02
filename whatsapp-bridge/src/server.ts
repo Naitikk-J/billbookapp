@@ -73,7 +73,12 @@ app.post('/logout', async (_req, res) => {
   }
 });
 
-whatsapp.start();
+// Start the HTTP listener immediately so health checks pass while WhatsApp
+// is still booting; kick off the WhatsApp connection in the background.
 app.listen(PORT, HOST, () => {
   console.log(`[bridge] listening on http://${HOST}:${PORT}`);
+});
+
+whatsapp.start().catch((err) => {
+  console.error('[bridge] whatsapp.start() failed:', err);
 });

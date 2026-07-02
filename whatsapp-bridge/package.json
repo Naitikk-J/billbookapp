@@ -1,8 +1,8 @@
 {
   "name": "@safarmate/whatsapp-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Self-hosted WhatsApp Web bridge for Safarmate Admin Portal. Runs whatsapp-web.js with persistent session, exposed over an HTTPS endpoint locked behind a shared secret.",
+  "description": "Baileys-backed WhatsApp bridge for Safarmate Admin Portal. Pure JS (no Chromium), fits in 128 MB, and persists its multi-device session to MongoDB so cold boots restore automatically without a fresh QR scan.",
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
@@ -12,10 +12,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.9",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "qrcode": "^1.5.4",
-    "whatsapp-web.js": "^1.26.0"
+    "mongodb": "^6.9.0",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

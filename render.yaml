@@ -1,4 +1,4 @@
-# Render Blueprint for the Safarmate WhatsApp bridge.
+# Render Blueprint for the Safarmate WhatsApp bridge (Baileys build).
 #
 # This file MUST live at the repo root — Render's Blueprint discovery looks
 # for /render.yaml on the selected branch and nowhere else.
@@ -6,24 +6,24 @@
 # We only deploy the whatsapp-bridge workspace here; the Safarmate client
 # and server continue to deploy on Vercel.
 #
-# On the free "Web Service" plan the container:
-#   • sleeps after ~15 minutes of no HTTP traffic
-#   • has NO persistent disk, so `.wwebjs_auth/` is wiped on every cold boot
-#     → every wake-up needs a fresh QR scan (the design we're OK with)
-#   • gets 512 MB RAM total (Chromium is tuned in whatsapp-bridge/Dockerfile
-#     and whatsappClient.ts for this ceiling; if it OOMs, upgrade to the
-#     $7/mo Starter plan, which also gets you a persistent disk so re-scans
-#     stop being needed)
+# The bridge stores its WhatsApp session in MongoDB (see whatsappClient.ts +
+# mongoAuth.ts), so the free-tier Render container can sleep, cold-boot, and
+# restore the session automatically — no fresh QR scan after the first one.
+#
+# Both secrets are set in the Render dashboard when you deploy:
+#   • WHATSAPP_BRIDGE_TOKEN  — 32-byte hex used by the Safarmate server to
+#                              auth against the bridge.
+#   • MONGODB_URI            — same Atlas connection string as the main
+#                              Safarmate server. The bridge only touches
+#                              the `whatsapp_session` collection.
 #
 # How to deploy:
 #   1. Push this repo to GitHub.
 #   2. On https://dashboard.render.com → New → Blueprint → connect this repo
 #      (branch: main). Render will pick up this file automatically.
-#   3. When prompted, paste your 32-byte hex token into WHATSAPP_BRIDGE_TOKEN.
-#      Generate one with:
-#        node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-#   4. Deploy. Render will give you an HTTPS URL like
-#      `https://safarmate-whatsapp.onrender.com` — put that in the Safarmate
+#   3. Paste the two secrets when prompted.
+#   4. Deploy. Grab the URL Render assigns (e.g.
+#      `https://safarmate-whatsapp.onrender.com`) and put it in the Safarmate
 #      server env as WHATSAPP_BRIDGE_URL (same token as WHATSAPP_BRIDGE_TOKEN).
 #   5. Open Safarmate → Settings → WhatsApp reminders → scan the QR.
 
@@ -32,22 +32,20 @@ services:
     name: safarmate-whatsapp
     runtime: docker
     plan: free
-    region: singapore                       # closest free region to India
+    region: singapore
     dockerfilePath: ./whatsapp-bridge/Dockerfile
     dockerContext: ./whatsapp-bridge
     healthCheckPath: /health
     envVars:
       - key: WHATSAPP_BRIDGE_TOKEN
-        sync: false                         # you set this in the Render dashboard
+        sync: false
+      - key: MONGODB_URI
+        sync: false
       - key: HOST
         value: 0.0.0.0
       - key: PORT
         value: 5555
       - key: NODE_ENV
         value: production
-      - key: PUPPETEER_SKIP_DOWNLOAD
-        value: "true"
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/chromium
-      - key: WHATSAPP_SESSION_DIR
-        value: /data/wwebjs_auth
+      - key: WHATSAPP_MONGO_COLLECTION
+        value: whatsapp_session
