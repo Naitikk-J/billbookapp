@@ -339,28 +339,39 @@ function capsWord(raw: string): string {
 }
 
 const AIR_INDIA_LEADING_SURNAMES = [
-  'KHAN',
-  'SINGH',
-  'KUMAR',
-  'VATS',
-  'DEVI',
+  'AGRAWAL',
+  'AGARWAL',
+  'MALHOTRA',
+  'KHURANA',
+  'CHAUHAN',
+  'BHARDWAJ',
+  'TRIVEDI',
   'SHARMA',
   'GUPTA',
   'PATEL',
   'REDDY',
-  'JAIN',
-  'AGARWAL',
   'VERMA',
   'YADAV',
-  'CHAUHAN',
   'THAKUR',
-  'MALHOTRA',
   'KAPOOR',
   'MEHTA',
+  'MISHRA',
+  'PANDEY',
+  'SAXENA',
+  'SINGH',
+  'KUMAR',
+  'TAYAL',
+  'JAIN',
+  'VATS',
+  'DEVI',
+  'KHAN',
+  'SHAH',
+  'JOSHI',
+  'RAHUL',
   'RAJ',
   'DAS',
   'ROY',
-];
+].sort((a, b) => b.length - a.length);
 
 function humanizeSmushedGiven(rest: string): string {
   const core = rest.replace(/[^A-Za-z]/g, '').toUpperCase();
@@ -385,7 +396,9 @@ function humanizeSmushedGiven(rest: string): string {
     if (a.length < 4 || b.length < 4) continue;
     const joined = `${a} ${b}`.trim();
     if (!isPlausiblePassengerName(joined)) continue;
-    const score = Math.min(a.length, b.length) + (a.length >= 5 ? 1 : 0) + (b.length >= 5 ? 1 : 0);
+    let score = Math.min(a.length, b.length) + (a.length >= 5 ? 1 : 0) + (b.length >= 5 ? 1 : 0);
+    if (AIR_INDIA_LEADING_SURNAMES.includes(b.toUpperCase())) score += 6;
+    if (AIR_INDIA_LEADING_SURNAMES.includes(a.toUpperCase())) score += 3;
     if (score > bestScore || (score === bestScore && i > bestSplitAt)) {
       bestScore = score;
       bestSplitAt = i;
@@ -410,7 +423,7 @@ function parseAirIndiaCapsPassenger(caps: string): string {
   if (!core) return '';
 
   for (const s of AIR_INDIA_LEADING_SURNAMES) {
-    if (core.startsWith(s) && core.length > s.length + 3) {
+    if (core.startsWith(s) && core.length > s.length + 2) {
       const given = humanizeSmushedGiven(core.slice(s.length));
       const joined = `${given} ${capsWord(s)}`.trim();
       if (isPlausiblePassengerName(joined)) return joined;
