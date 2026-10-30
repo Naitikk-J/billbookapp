@@ -75,12 +75,14 @@ function routeLabel(segments: NormalisedFlight[]): string {
 }
 
 function pickPassengerName(segments: NormalisedFlight[], billToName: string): string {
-  if (billToName.trim()) return billToName.trim();
+  const names: string[] = [];
+  if (billToName.trim()) names.push(billToName.trim());
   for (const s of segments) {
-    const p = s.passengers.find((x) => x.name.trim());
-    if (p) return p.name.trim();
+    for (const p of s.passengers) {
+      if (p.name.trim()) names.push(p.name.trim());
+    }
   }
-  return '';
+  return names.sort((a, b) => b.length - a.length)[0] ?? '';
 }
 
 function matchCustomerId(

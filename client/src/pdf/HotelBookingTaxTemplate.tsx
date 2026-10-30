@@ -203,7 +203,10 @@ export function HotelBookingTaxTemplate({
     .join(', ');
 
   const customer = invoice.customerSnapshot ?? {};
-  const customerName = clean(customer.name) || brand;
+  const td = invoice.travelDetails ?? {};
+  const customerName =
+    [clean(customer.name), clean(td.travellerName)].filter(Boolean).sort((a, b) => b.length - a.length)[0] ||
+    brand;
   const customerAddress = [
     clean(customer.address),
     [clean(customer.city), clean(customer.state), clean(customer.postalCode)].filter(Boolean).join(' - '),
@@ -211,7 +214,6 @@ export function HotelBookingTaxTemplate({
     .filter(Boolean)
     .join(', ');
 
-  const td = invoice.travelDetails ?? {};
   const placeOfSupply =
     clean(td.placeOfSupply) || clean(customer.state) || clean(company?.state) || '—';
   const txnCategory =
@@ -225,7 +227,9 @@ export function HotelBookingTaxTemplate({
     (bookingType === 'flight'
       ? 'Reservation service for air transport, tour operator and tourist assistance services'
       : 'Reservation service for accommodation, tour operator and tourist assistance services');
-  const travellerName = clean(td.travellerName) || clean(customer.name) || '—';
+  const travellerName =
+    [clean(td.travellerName), clean(customer.name)].filter(Boolean).sort((a, b) => b.length - a.length)[0] ||
+    '—';
   const travellerPan = clean(td.travellerPan) || clean(customer.panNumber);
   const panHolderName = clean(td.panHolderName) || travellerName.toUpperCase();
   const voucherNo = clean(td.advancedReceiptVoucherNo);

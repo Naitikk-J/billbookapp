@@ -3,7 +3,7 @@ import { Document, Image, Page, Text, View, StyleSheet } from '@react-pdf/render
 import type { Company, Invoice, TravelDetails } from '@/lib/types';
 import { expandIndianState, formatAirportLine, formatSectorLabel } from '@/lib/airportNames';
 import { barcodeDataUrl, sectorBarcodeValue } from './barcodeDataUrl';
-import { fmtDate } from './shared';
+import { fmtDate, safarmateLogoUrl } from './shared';
 
 const INK = '#1a1a1a';
 const MUTED = '#555555';
@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 10,
   },
-  passengerName: { fontSize: 11, fontWeight: 700 },
+  passengerName: { fontSize: 11, fontWeight: 700, flexWrap: 'wrap', lineHeight: 1.35 },
   sectorHeader: {
     marginTop: 12,
     marginBottom: 4,
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
   },
-  travellerNameCol: { flex: 1, fontSize: 9, fontWeight: 700 },
+  travellerNameCol: { flex: 1, fontSize: 9, fontWeight: 700, flexWrap: 'wrap', lineHeight: 1.35 },
   travellerSectorCol: { flex: 1, fontSize: 9, fontWeight: 700 },
   barcodeImg: { width: 130, height: 32, objectFit: 'contain' },
   barcodePlaceholder: {
@@ -135,17 +135,25 @@ const styles = StyleSheet.create({
   },
 });
 
-function safarmateLogoSrc(): string {
-  const path = '/brand/safarmate-logo.png';
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${path}`;
-  }
-  return path;
-}
-
 function clean(value?: string | null): string {
   const v = (value ?? '').trim();
   return v || '';
+}
+
+function pickLongestName(...candidates: Array<string | undefined | null>): string {
+  return candidates
+    .map((c) => clean(c))
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)[0] ?? '';
+}
+
+function passengerDisplayName(invoice: Invoice, segments: SegmentRow[]): string {
+  const td = invoice.travelDetails ?? {};
+  const fromSegments = segments.flatMap((s) => (s.passengers ?? []).map((p) => p.name));
+  return (
+    pickLongestName(td.travellerName, invoice.customerSnapshot?.name, ...fromSegments) ||
+    'Passenger'
+  );
 }
 
 type SegmentRow = {
@@ -236,11 +244,10 @@ export function SafarmateFlightVoucherTemplate({
     .join(', ');
   const phone = clean(company?.phone);
   const td = invoice.travelDetails ?? {};
-  const pnr = clean(td.bookingId) || segmentsFromInvoice(invoice)[0]?.pnr || '—';
-  const bookingId = clean(td.bookingId) || pnr;
-  const passenger =
-    clean(td.travellerName) || clean(invoice.customerSnapshot?.name) || 'Passenger';
   const segments = useMemo(() => segmentsFromInvoice(invoice), [invoice]);
+  const pnr = clean(td.bookingId) || segments[0]?.pnr || '—';
+  const bookingId = clean(td.bookingId) || pnr;
+  const passenger = passengerDisplayName(invoice, segments);
   const snapshots = useMemo(
     () => (Array.isArray(td.barcodeSnapshots) ? td.barcodeSnapshots.filter(Boolean) : []),
     [td.barcodeSnapshots]
@@ -281,7 +288,7 @@ export function SafarmateFlightVoucherTemplate({
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Image src={safarmateLogoSrc()} style={styles.logo} />
+          <Image src={safarmateLogoUrl()} style={styles.logo} />
           <View style={styles.companyBlock}>
             <Text style={styles.companyName}>{brand}</Text>
             {address ? <Text style={styles.companyLine}>{address}</Text> : null}

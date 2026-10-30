@@ -6,13 +6,15 @@
   "workspaces": [
     "client",
     "server",
-    "whatsapp-bridge"
+    "whatsapp-bridge",
+    "telegram-bot"
   ],
   "scripts": {
     "dev": "npm-run-all --parallel dev:client dev:server",
     "dev:client": "npm --workspace client run dev",
     "dev:server": "npm --workspace server run dev",
     "dev:whatsapp": "npm --workspace whatsapp-bridge run dev",
+    "dev:telegram": "npm --workspace telegram-bot run dev",
     "build": "npm --workspace server run build && npm --workspace client run build",
     "build:client": "npm --workspace client run build",
     "build:server": "npm --workspace server run build",

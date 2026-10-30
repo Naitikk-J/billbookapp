@@ -1,5 +1,24 @@
 import { Font } from '@react-pdf/renderer';
 
+/** Base URL for static PDF assets (logo, fonts) — set in Telegram bot / headless render. */
+export function pdfPublicBaseUrl(): string {
+  const fromEnv =
+    typeof process !== 'undefined'
+      ? (process.env.SAFARMATE_PUBLIC_URL ?? process.env.VITE_APP_URL ?? '')
+      : '';
+  if (fromEnv.trim()) return fromEnv.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
+}
+
+export function safarmateLogoUrl(): string {
+  const base = pdfPublicBaseUrl();
+  const path = '/brand/safarmate-logo.png';
+  return base ? `${base}${path}` : path;
+}
+
 let registered = false;
 
 export function ensureFonts() {

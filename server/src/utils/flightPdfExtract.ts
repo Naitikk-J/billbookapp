@@ -111,7 +111,7 @@ function splitSmushedCapsName(raw: string): string {
       if (/[AEIOU]/i.test(p)) score += 1;
       if (/[^AEIOU]{5,}/i.test(p)) score -= 4;
     }
-    score -= Math.max(0, parts.length - 3) * 5;
+    score -= Math.max(0, parts.length - 8) * 4;
     return score;
   };
 
@@ -155,6 +155,26 @@ function humanizePassenger(raw: string): string {
     .join(' ');
 }
 
+/** Prefer the longest plausible passenger line from a ticket block. */
+function extractPassengerNameFromSection(section: string): string {
+  const block = section.slice(0, 600);
+  const titled = block.match(
+    /(?:Mr\.?|Mrs\.?|Ms\.?|Mstr\.?|Master\.?|Miss\.?)\s+([A-Za-z]+(?:[\s.-]+[A-Za-z]+){0,7})/i
+  );
+  if (titled) return humanizePassenger(titled[1]);
+
+  const numbered = block.match(/\d+\.\s*(?:Mr\.?|Mrs\.?|Ms\.?|Mstr\.?)?\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+){0,7})/i);
+  if (numbered) return humanizePassenger(numbered[1]);
+
+  const capsWords = block.match(/\b([A-Z]{2,}(?:\s+[A-Z]{2,}){1,7})\b/);
+  if (capsWords) return humanizePassenger(capsWords[1]);
+
+  const titleCase = block.match(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+){1,7})\b/);
+  if (titleCase) return humanizePassenger(titleCase[1]);
+
+  return '';
+}
+
 function dedupeFlightSegments(segments: NormalisedFlight[]): NormalisedFlight[] {
   const seen = new Set<string>();
   return segments.filter((s) => {
@@ -194,9 +214,18 @@ function parseAirIndia(flat: string, fileName?: string): FlightPdfExtraction {
   charges.pnr = pnr;
   charges.bookingId = pnr;
 
-  const passenger = flat.match(/PASSENGER:\s*([A-Z]+)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1] ?? '';
+  const passengerSpaced =
+    flat.match(/PASSENGER:\s*([A-Z][A-Z\s.'-]{2,}?)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1] ?? '';
+  const passengerCompact =
+    flat.match(/PASSENGER:\s*([A-Z]+)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1] ?? '';
   const fromFile = passengerNameFromFileName(fileName);
-  charges.billToName = fromFile || splitSmushedCapsName(passenger);
+  if (fromFile) {
+    charges.billToName = fromFile;
+  } else if (passengerSpaced.includes(' ')) {
+    charges.billToName = humanizePassenger(passengerSpaced);
+  } else if (passengerCompact) {
+    charges.billToName = splitSmushedCapsName(passengerCompact);
+  }
 
   charges.issuedDate = flat.match(/Dateofissue:\s*(\d{1,2}[A-Za-z]{3}\d{4})/i)?.[1] ?? '';
 
@@ -248,12 +277,14 @@ function parseIndigo(flat: string, raw: string): FlightPdfExtraction {
   charges.pnr = pnr;
   charges.bookingId = pnr;
 
-  const dupName =
-    raw.match(/Passenger Information[\s\S]{0,120}?([a-z]{3,})\1+/i)?.[1] ??
-    raw.match(/\b([a-z]{3,})\1+\b/i)?.[1];
-  const nameMatch = raw.match(/Passenger Information[\s\S]{0,200}?([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+)?)/);
-  if (dupName) charges.billToName = humanizePassenger(dedupeRepeatedNameToken(dupName));
-  else if (nameMatch) charges.billToName = humanizePassenger(nameMatch[1]);
+  const paxSection = raw.match(/Passenger Information([\s\S]{0,500})/i)?.[1] ?? '';
+  charges.billToName = extractPassengerNameFromSection(paxSection);
+  if (!charges.billToName) {
+    const dupName =
+      raw.match(/Passenger Information[\s\S]{0,120}?([a-z]{3,})\1+/i)?.[1] ??
+      raw.match(/\b([a-z]{3,})\1+\b/i)?.[1];
+    if (dupName) charges.billToName = humanizePassenger(dedupeRepeatedNameToken(dupName));
+  }
 
   const sector = flat.match(/\b([A-Z]{3})-([A-Z]{3})\b/);
   const flight = flat.match(/\b(6E)\s*(\d{3,4})\b/i);
@@ -306,10 +337,14 @@ function parseSafarmateVoucher(raw: string): FlightPdfExtraction {
   charges.bookingId = (raw.match(/Booking\s*Id\s*:\s*([A-Z0-9]+)/i)?.[1] ?? charges.pnr).toUpperCase();
   charges.issuedDate = cleanPdfWhitespace(raw.match(/Issued\s*Date\s*:\s*([^\n]+)/i)?.[1] ?? '');
 
-  const passengerMatch = raw.match(
-    /Passenger\s*Name[\s\S]*?\d+\.\s*(?:Ms|Mr|Mrs)\.?\s*([A-Za-z]+(?:[\t ]+[A-Za-z]+){0,3})/i
-  );
-  charges.billToName = passengerMatch ? cleanPdfWhitespace(passengerMatch[1]) : '';
+  const passengerBlock = raw.match(/Passenger\s*Name([\s\S]{0,280})/i)?.[1] ?? '';
+  charges.billToName = extractPassengerNameFromSection(passengerBlock);
+  if (!charges.billToName) {
+    const passengerMatch = raw.match(
+      /Passenger\s*Name[\s\S]*?\d+\.\s*(?:Ms|Mr|Mrs|Mstr)\.?\s*([A-Za-z]+(?:[\t ]+[A-Za-z]+)+)/i
+    );
+    charges.billToName = passengerMatch ? humanizePassenger(passengerMatch[1]) : '';
+  }
 
   const segments: NormalisedFlight[] = [];
   const flightSectionRe =
