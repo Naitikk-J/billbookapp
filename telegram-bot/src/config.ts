@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-dotenv.config();
+const __dir = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: join(__dir, '../.env') });
 
 function req(name: string): string {
   const v = process.env[name]?.trim();
@@ -14,13 +17,21 @@ export const config = {
   publicAppUrl: (process.env.SAFARMATE_PUBLIC_URL ?? '').replace(/\/$/, ''),
   email: req('SAFARMATE_EMAIL'),
   password: req('SAFARMATE_PASSWORD'),
-  allowedChatIds: (process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? '')
+  allowedEntries: (process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
 };
 
-export function isChatAllowed(chatId: number): boolean {
-  if (config.allowedChatIds.length === 0) return true;
-  return config.allowedChatIds.includes(String(chatId));
+const allowedChatIds = config.allowedEntries.filter((e) => /^-?\d+$/.test(e));
+const allowedUsernames = config.allowedEntries
+  .filter((e) => !/^-?\d+$/.test(e))
+  .map((e) => e.replace(/^@/, '').toLowerCase());
+
+export function isChatAllowed(chatId: number, username?: string | null): boolean {
+  if (config.allowedEntries.length === 0) return true;
+  if (allowedChatIds.includes(String(chatId))) return true;
+  const un = (username ?? '').replace(/^@/, '').trim().toLowerCase();
+  if (un && allowedUsernames.includes(un)) return true;
+  return false;
 }

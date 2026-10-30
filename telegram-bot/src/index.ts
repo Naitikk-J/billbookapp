@@ -59,10 +59,14 @@ function summaryText(draft: NewBillDraft): string {
 }
 
 bot.use(async (ctx, next) => {
-  const chatId = ctx.chat?.id;
-  if (!chatId) return;
-  if (!isChatAllowed(chatId)) {
-    await ctx.reply('This bot is private. Ask admin to add your Telegram user ID.');
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  if (!isChatAllowed(userId, ctx.from?.username)) {
+    const un = ctx.from?.username ? `@${ctx.from.username}` : '(no username)';
+    await ctx.reply(
+      `This bot is private. Ask admin to allow your account.\n\nYour Telegram user ID: ${userId}\nUsername: ${un}`
+    );
+    console.warn('[telegram-bot] blocked user', userId, ctx.from?.username);
     return;
   }
   return next();
@@ -371,6 +375,7 @@ bot.catch((err) => {
 });
 
 console.log('[telegram-bot] starting…');
+console.log('[telegram-bot] allowed:', config.allowedEntries.join(', ') || '(all users — dev)');
 void bootstrapBot();
 bot.launch().then(() => console.log('[telegram-bot] polling'));
 

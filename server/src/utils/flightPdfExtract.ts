@@ -156,7 +156,21 @@ function humanizePassenger(raw: string): string {
     .join(' ');
 }
 
-/** Keep every word from the ticket — prefer the longest cleaned candidate. */
+const PASSENGER_NAME_BLOCKLIST =
+  /\b(airport|international|terminal|sector|indigo|passenger|information|check-in|check in|booking|payment|confirmed|complete|female|male|adult|child|infant|travel time|baggage|add-ons|pnr|reference|mumbai|chandigarh|delhi|bangalore|hyderabad|chennai|kolkata|pune|goa|goindigo)\b/i;
+
+function isPlausiblePassengerName(name: string): boolean {
+  const n = cleanPdfWhitespace(name);
+  if (!n || n.length < 2 || n.length > 80) return false;
+  if (PASSENGER_NAME_BLOCKLIST.test(n)) return false;
+  if (/\d{2,}/.test(n)) return false;
+  const words = n.split(/\s+/);
+  if (words.length > 8) return false;
+  if (words.some((w) => w.length > 18)) return false;
+  return true;
+}
+
+/** Keep every word from the ticket — prefer the longest plausible cleaned candidate. */
 function pickLongestPassengerName(...candidates: Array<string | undefined | null>): string {
   const seen = new Set<string>();
   const normalized: string[] = [];
@@ -169,7 +183,45 @@ function pickLongestPassengerName(...candidates: Array<string | undefined | null
     seen.add(key);
     normalized.push(n);
   }
-  return normalized.sort((a, b) => b.length - a.length)[0] ?? '';
+  const plausible = normalized.filter(isPlausiblePassengerName);
+  const pool = plausible.length > 0 ? plausible : normalized;
+  return pool.sort((a, b) => b.length - a.length)[0] ?? '';
+}
+
+/** IndiGo itinerary PDFs often repeat the pax name (PDF text quirk) before "Adult". */
+function parseIndigoPassengerName(raw: string, fileName?: string): string {
+  const block = raw.match(/Passenger Information([\s\S]{0,450})/i)?.[1] ?? '';
+
+  const smushedBeforeAdult = block.match(/\b([a-z]{3,15})\1+(?:\s*\1+)*\s*(?:Adult|Child|Infant)/i);
+  const fromSmushed = smushedBeforeAdult
+    ? humanizePassenger(dedupeRepeatedNameToken(smushedBeforeAdult[1]))
+    : '';
+
+  const titledBeforeAdult = block.match(
+    /(?:Mr\.?|Mrs\.?|Ms\.?|Mstr\.?|Miss\.?)\s*([A-Za-z]+(?:\s+[A-Za-z]+){0,8})\s*(?:Adult|Child|Infant|\|)/i
+  );
+  const fromTitled = titledBeforeAdult ? humanizePassenger(titledBeforeAdult[1]) : '';
+
+  const spacedBeforeAdult = block.match(
+    /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,8})\s*(?:Adult|Child|Infant|\|)/i
+  );
+  const fromSpaced = spacedBeforeAdult ? humanizePassenger(spacedBeforeAdult[1]) : '';
+
+  const dupToken =
+    block.match(/([a-z]{3,15})\1+/i)?.[1] ??
+    raw.match(/Passenger Information[\s\S]{0,200}?([a-z]{3,15})\1+/i)?.[1];
+  const fromDup = dupToken ? humanizePassenger(dedupeRepeatedNameToken(dupToken)) : '';
+
+  const fromSection = extractPassengerNameFromSection(block);
+
+  return pickLongestPassengerName(
+    fromSmushed,
+    fromTitled,
+    fromSpaced,
+    fromDup,
+    fromSection,
+    passengerNameFromFileName(fileName)
+  );
 }
 
 function parseAirIndiaPassengerName(flat: string, raw: string, fileName?: string): string {
@@ -313,17 +365,7 @@ function parseIndigo(flat: string, raw: string, fileName?: string): FlightPdfExt
   charges.pnr = pnr;
   charges.bookingId = pnr;
 
-  const paxSection = raw.match(/Passenger Information([\s\S]{0,800})/i)?.[1] ?? '';
-  const fromSection = extractPassengerNameFromSection(paxSection);
-  const dupName =
-    raw.match(/Passenger Information[\s\S]{0,120}?([a-z]{3,})\1+/i)?.[1] ??
-    raw.match(/\b([a-z]{3,})\1+\b/i)?.[1];
-  const fromDup = dupName ? humanizePassenger(dedupeRepeatedNameToken(dupName)) : '';
-  charges.billToName = pickLongestPassengerName(
-    fromSection,
-    fromDup,
-    passengerNameFromFileName(fileName)
-  );
+  charges.billToName = parseIndigoPassengerName(raw, fileName);
 
   const sector = flat.match(/\b([A-Z]{3})-([A-Z]{3})\b/);
   const flight = flat.match(/\b(6E)\s*(\d{3,4})\b/i);
