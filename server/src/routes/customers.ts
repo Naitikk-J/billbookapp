@@ -12,6 +12,7 @@ import {
   querySuffix,
   respondCached,
 } from '../utils/companyCache';
+import { companyFilter } from '../utils/companyScope';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -38,7 +39,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const q = String(req.query.q ?? '').trim();
     const kind = req.query.kind ? String(req.query.kind) : undefined;
-    const filter: Record<string, unknown> = { companyId: req.user!.companyId };
+    const companyId = req.user!.companyId as string;
+    const filter: Record<string, unknown> = { ...companyFilter(companyId) };
     if (kind === 'customer' || kind === 'supplier') filter.kind = kind;
     if (q) {
       filter.$or = [
@@ -48,7 +50,6 @@ router.get(
         { city: { $regex: q, $options: 'i' } },
       ];
     }
-    const companyId = req.user!.companyId as string;
     const key = companyCacheKey(companyId, 'customers', querySuffix({ q, kind: kind ?? '' }));
     await respondCached(res, key, CACHE_TTL.catalogMs, async () => {
       const customers = await Customer.find(filter).sort({ createdAt: -1 }).limit(500).lean();

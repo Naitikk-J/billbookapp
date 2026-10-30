@@ -377,11 +377,9 @@ export default function InvoiceBuilderPage() {
         endDate: travelPayload.endDate
           ? new Date(travelPayload.endDate).toISOString()
           : undefined,
+        adults: Math.max(0, Math.floor(Number(travelPayload.adults) || 0)),
+        children: Math.max(0, Math.floor(Number(travelPayload.children) || 0)),
       };
-      if (values.template !== BOOKING_TAX_TEMPLATE) {
-        travelDetails.adults = Math.max(0, Math.floor(Number(travelPayload.adults) || 0));
-        travelDetails.children = Math.max(0, Math.floor(Number(travelPayload.children) || 0));
-      }
 
       const payload = {
         kind: values.kind,
@@ -674,14 +672,7 @@ export default function InvoiceBuilderPage() {
                     <Select
                       value={bookingType}
                       onValueChange={(v) => {
-                        const next = v as BookingType;
-                        form.setValue(
-                          'travel',
-                          buildTravelPayload(BOOKING_TAX_TEMPLATE, {
-                            ...form.getValues('travel'),
-                            bookingType: next,
-                          }) as FormValues['travel']
-                        );
+                        form.setValue('travel.bookingType', v as BookingType);
                       }}
                     >
                       <SelectTrigger>

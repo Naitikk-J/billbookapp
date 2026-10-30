@@ -35,34 +35,6 @@ export interface CustomerTravelContext {
   panNumber?: string;
 }
 
-const GENERAL_TRAVEL_KEYS = [
-  'packageName',
-  'destination',
-  'startDate',
-  'endDate',
-  'adults',
-  'children',
-  'hotel',
-  'flight',
-  'vehicle',
-  'notes',
-] as const;
-
-const BOOKING_TAX_COMMON_KEYS = [
-  'bookingType',
-  'bookingId',
-  'startDate',
-  'endDate',
-  'travellerName',
-  'travellerPan',
-  'panHolderName',
-  'advancedReceiptVoucherNo',
-  'placeOfSupply',
-  'transactionalCategory',
-  'transactionalDetails',
-  'serviceDescription',
-] as const;
-
 function clean(value?: string | null): string {
   return (value ?? '').trim();
 }
@@ -71,17 +43,6 @@ function toDate(value?: string | Date): Date | undefined {
   if (!value) return undefined;
   const d = value instanceof Date ? value : new Date(value);
   return Number.isNaN(d.getTime()) ? undefined : d;
-}
-
-function pickKeys(
-  source: Record<string, unknown>,
-  keys: readonly string[]
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const key of keys) {
-    if (key in source) out[key] = source[key];
-  }
-  return out;
 }
 
 export function inferBookingType(td: TravelDetailsInput | undefined): BookingType {
@@ -100,7 +61,7 @@ export function inferBookingType(td: TravelDetailsInput | undefined): BookingTyp
   return 'hotel';
 }
 
-/** Map generic travel fields into booking-tax fields when switching templates. */
+/** Fill empty booking-tax fields from generic travel data — never removes existing values. */
 export function coerceBookingTaxInput(td: TravelDetailsInput): TravelDetailsInput {
   const bookingType = inferBookingType(td);
   const out: TravelDetailsInput = { ...td, bookingType };
@@ -145,7 +106,7 @@ function buildNormalizedRecord(
         : defaultHotelService
       : '');
 
-  const full: Record<string, unknown> = {
+  return {
     bookingType,
     packageName: clean(td.packageName),
     destination: clean(td.destination),
@@ -168,16 +129,6 @@ function buildNormalizedRecord(
     transactionalDetails,
     serviceDescription,
   };
-
-  if (template === BOOKING_TAX_TEMPLATE) {
-    const keys = [
-      ...BOOKING_TAX_COMMON_KEYS,
-      ...(bookingType === 'flight' ? (['flight', 'destination'] as const) : (['hotel', 'hotelCity'] as const)),
-    ];
-    return pickKeys(full, keys);
-  }
-
-  return pickKeys(full, GENERAL_TRAVEL_KEYS);
 }
 
 export function normalizeTravelDetails(

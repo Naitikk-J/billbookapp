@@ -140,6 +140,12 @@ export default function InvoicesPage() {
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
             </div>
+          ) : list.isError ? (
+            <EmptyState
+              icon={<FileText className="h-5 w-5 text-destructive" />}
+              title="Could not load invoices"
+              description="The server or database may be unreachable. Refresh or try again in a moment."
+            />
           ) : list.data && list.data.length > 0 ? (
             <div className="divide-y divide-border">
               <div className="grid grid-cols-[140px_1.5fr_120px_140px_140px_44px] items-center px-6 py-3 text-xs uppercase tracking-wide text-muted-foreground">

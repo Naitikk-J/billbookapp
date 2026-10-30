@@ -17,6 +17,7 @@ import {
   querySuffix,
   respondCached,
 } from '../utils/companyCache';
+import { companyFilter, toCompanyObjectId } from '../utils/companyScope';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -141,7 +142,7 @@ router.get(
     const companyId = req.user!.companyId as string;
     const key = companyCacheKey(companyId, 'invoices', 'stats');
     await respondCached(res, key, CACHE_TTL.invoiceStatsMs, async () => {
-      const cid = new (Invoice.base as typeof import('mongoose')).Types.ObjectId(companyId);
+      const cid = toCompanyObjectId(companyId);
       const now = new Date();
       const startOfDay = new Date(now);
       startOfDay.setHours(0, 0, 0, 0);
@@ -166,7 +167,7 @@ router.get(
           },
           { $group: { _id: null, total: { $sum: '$balanceDue' }, count: { $sum: 1 } } },
         ]),
-        Invoice.countDocuments({ companyId, status: 'paid' }),
+        Invoice.countDocuments({ ...companyFilter(companyId), status: 'paid' }),
         Invoice.aggregate([
           { $match: { companyId: cid } },
           { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -212,7 +213,8 @@ router.get(
     const q = String(req.query.q ?? '').trim();
     const status = String(req.query.status ?? '').trim();
     const kind = String(req.query.kind ?? '').trim();
-    const filter: Record<string, unknown> = { companyId: req.user!.companyId };
+    const companyId = req.user!.companyId as string;
+    const filter: Record<string, unknown> = { ...companyFilter(companyId) };
     if (status) filter.status = status;
     if (kind) filter.kind = kind;
     if (q) {
@@ -222,7 +224,6 @@ router.get(
         { 'travelDetails.destination': { $regex: q, $options: 'i' } },
       ];
     }
-    const companyId = req.user!.companyId as string;
     const key = companyCacheKey(
       companyId,
       'invoices',

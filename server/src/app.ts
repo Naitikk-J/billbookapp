@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 
 import { env, isProd } from './config/env';
 import { connectDB } from './config/db';
+import { ApiError } from './utils/ApiError';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 import authRoutes from './routes/auth';
@@ -18,8 +19,6 @@ import ledgerRoutes from './routes/ledger';
 import aiRoutes from './routes/ai';
 import flightRoutes from './routes/flights';
 import whatsappRoutes from './routes/whatsapp';
-
-let initialized = false;
 
 export function createApp(): Express {
   const app = express();
@@ -53,6 +52,16 @@ export function createApp(): Express {
     res.json({ ok: true, env: env.nodeEnv, time: new Date().toISOString() });
   });
 
+  app.use(async (_req: Request, _res: Response, next) => {
+    try {
+      await connectDB();
+      next();
+    } catch (err) {
+      console.error('[db] connect failed', err);
+      next(new ApiError(503, 'Database connection failed'));
+    }
+  });
+
   app.use('/api/auth', authRoutes);
   app.use('/api/company', companyRoutes);
   app.use('/api/customers', customerRoutes);
@@ -70,9 +79,5 @@ export function createApp(): Express {
 }
 
 export async function bootstrap(): Promise<Express> {
-  if (!initialized) {
-    await connectDB();
-    initialized = true;
-  }
   return createApp();
 }

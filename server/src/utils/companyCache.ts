@@ -30,6 +30,10 @@ export function querySuffix(params: Record<string, string | undefined>): string 
   return pairs.length ? pairs.join('&') : '_';
 }
 
+function cloneForCache<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 export async function respondCached(
   res: Response,
   key: string,
@@ -45,8 +49,9 @@ export async function respondCached(
   }
 
   const body = await loader();
-  memoryCache.set(key, body, ttlMs);
+  const payload = cloneForCache(body);
+  memoryCache.set(key, payload, ttlMs);
   res.set('X-Cache', 'MISS');
   res.set('Cache-Control', `private, max-age=${Math.max(1, Math.floor(ttlMs / 1000))}`);
-  res.json(body);
+  res.json(payload);
 }
