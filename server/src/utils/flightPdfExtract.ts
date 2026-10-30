@@ -1,5 +1,6 @@
 import { normaliseFlight, type NormalisedFlight } from './flightAi';
 import { emptyFlightBillCharges, type FlightBillCharges } from './flightBillCharges';
+import { cityForIata } from './airportNames';
 import { decodePdfBase64, flattenPdfText, pdfBufferToText } from './pdfText';
 
 export type FlightPdfFormat =
@@ -271,6 +272,8 @@ function parseIndigo(flat: string, raw: string): FlightPdfExtraction {
         flightNumber: `${flight[1].toUpperCase()} ${flight[2]}`,
         fromAirport: sector[1],
         toAirport: sector[2],
+        fromCity: cityForIata(sector[1]),
+        toCity: cityForIata(sector[2]),
         departureAt: depIso,
         arrivalAt: arrIso,
         passengers: charges.billToName ? [{ name: charges.billToName, seat: '', cabin: '' }] : [],

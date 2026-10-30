@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Document, Image, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Company, Invoice, TravelDetails } from '@/lib/types';
+import { expandIndianState, formatAirportLine, formatSectorLabel } from '@/lib/airportNames';
 import { barcodeDataUrl, sectorBarcodeValue } from './barcodeDataUrl';
 import { fmtDate } from './shared';
 
@@ -181,10 +182,8 @@ function fmtLegTime(value?: string | null): string {
   return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
 }
 
-function sectorCode(seg: SegmentRow): string {
-  const from = seg.fromAirport || seg.fromCity || '?';
-  const to = seg.toAirport || seg.toCity || '?';
-  return `${from} - ${to}`;
+function sectorHeading(seg: SegmentRow): string {
+  return formatSectorLabel(seg.fromCity, seg.fromAirport, seg.toCity, seg.toAirport);
 }
 
 function segmentsFromInvoice(invoice: Invoice): SegmentRow[] {
@@ -225,7 +224,13 @@ export function SafarmateFlightVoucherTemplate({
   const brand = clean(company?.legalName) || clean(company?.name) || 'Safarmate Travels LLP';
   const address = [
     clean(company?.address),
-    [clean(company?.city), clean(company?.state), clean(company?.postalCode)].filter(Boolean).join(', '),
+    [
+      clean(company?.city),
+      expandIndianState(clean(company?.state)),
+      clean(company?.postalCode),
+    ]
+      .filter(Boolean)
+      .join(', '),
   ]
     .filter(Boolean)
     .join(', ');
@@ -259,7 +264,7 @@ export function SafarmateFlightVoucherTemplate({
       const snapshotSrc = sectorSnapshots[idx] ?? null;
       return {
         key: `${from}-${to}-${idx}`,
-        sectorLabel: from && to ? `${from}-${to}` : sectorCode(seg),
+        sectorLabel: sectorHeading(seg),
         payload,
         src: snapshotSrc ?? barcodeDataUrl(payload, { height: 34, lineWidth: 1.05 }),
         fromOriginal: Boolean(snapshotSrc),
@@ -321,7 +326,7 @@ export function SafarmateFlightVoucherTemplate({
 
         {segments.map((seg, idx) => (
           <View key={`${seg.flightNumber}-${idx}`} wrap={false}>
-            <Text style={styles.sectorHeader}>{sectorCode(seg)}</Text>
+            <Text style={styles.sectorHeader}>{sectorHeading(seg)}</Text>
             <View style={styles.segmentCard}>
               <View style={styles.segmentTop}>
                 <Text style={styles.flightLabel}>
@@ -334,8 +339,7 @@ export function SafarmateFlightVoucherTemplate({
                 <View style={styles.leg}>
                   <Text style={styles.legTitle}>Departure</Text>
                   <Text style={styles.legCity}>
-                    {seg.fromCity || seg.fromAirport || '—'}
-                    {seg.fromAirport ? ` (${seg.fromAirport})` : ''}
+                    {formatAirportLine(seg.fromCity, seg.fromAirport)}
                   </Text>
                   <Text style={styles.legTime}>{fmtLegTime(seg.departureAt)}</Text>
                   <Text style={styles.legDate}>{fmtLegDate(seg.departureAt)}</Text>
@@ -343,8 +347,7 @@ export function SafarmateFlightVoucherTemplate({
                 <View style={styles.leg}>
                   <Text style={styles.legTitle}>Arrival</Text>
                   <Text style={styles.legCity}>
-                    {seg.toCity || seg.toAirport || '—'}
-                    {seg.toAirport ? ` (${seg.toAirport})` : ''}
+                    {formatAirportLine(seg.toCity, seg.toAirport)}
                   </Text>
                   <Text style={styles.legTime}>{fmtLegTime(seg.arrivalAt)}</Text>
                   <Text style={styles.legDate}>{fmtLegDate(seg.arrivalAt)}</Text>

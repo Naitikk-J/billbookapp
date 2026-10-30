@@ -1,5 +1,6 @@
 import type { NormalisedFlight } from './flightAi';
 import type { FlightBillCharges } from './flightBillCharges';
+import { enrichCityName } from './airportNames';
 export const FLIGHT_VOUCHER_TEMPLATE = 'safarmate-flight-voucher';
 
 export interface FlightSegmentSnapshot {
@@ -65,8 +66,8 @@ function segmentSnapshot(f: NormalisedFlight): FlightSegmentSnapshot {
 function routeLabel(segments: NormalisedFlight[]): string {
   if (segments.length === 0) return 'Flight booking';
   const parts = segments.map((s) => {
-    const from = s.fromAirport || s.fromCity || '?';
-    const to = s.toAirport || s.toCity || '?';
+    const from = enrichCityName(s.fromCity, s.fromAirport) || s.fromAirport || '?';
+    const to = enrichCityName(s.toCity, s.toAirport) || s.toAirport || '?';
     const fn = s.flightNumber || s.airlineCode || '';
     return fn ? `${fn} ${from}–${to}` : `${from}–${to}`;
   });
@@ -110,9 +111,11 @@ export function buildFlightInvoiceDraft(
   const bookingId = charges.bookingId || pnr;
   const passengerName = pickPassengerName(segments, charges.billToName);
   const destination =
-    primary?.toCity ||
+    enrichCityName(primary?.toCity, primary?.toAirport) ||
     primary?.toAirport ||
-    [primary?.fromCity, primary?.toCity].filter(Boolean).join(' → ') ||
+    [enrichCityName(primary?.fromCity, primary?.fromAirport), enrichCityName(primary?.toCity, primary?.toAirport)]
+      .filter(Boolean)
+      .join(' → ') ||
     '';
 
   const flightLine = segments
