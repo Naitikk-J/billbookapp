@@ -170,7 +170,7 @@ function isPlausiblePassengerName(name: string): boolean {
   if (/\d{2,}/.test(n)) return false;
   const words = n.split(/\s+/);
   if (words.length > 8) return false;
-  if (words.some((w) => w.length > 18)) return false;
+  if (words.some((w) => w.length > 18 || w.length < 2)) return false;
   return true;
 }
 
@@ -393,6 +393,13 @@ function parseAirIndiaCapsPassenger(caps: string, fileName?: string): string {
     }
   }
 
+  if (core.length >= 8 && core.length <= 28) {
+    for (let i = 4; i <= core.length - 4; i++) {
+      const joined = `${capsWord(core.slice(i))} ${capsWord(core.slice(0, i))}`;
+      if (isPlausiblePassengerName(joined)) return joined;
+    }
+  }
+
   const split = splitSmushedCapsName(core);
   if (isPlausiblePassengerName(split)) return split;
 
@@ -405,12 +412,6 @@ function parseAirIndiaCapsPassenger(caps: string, fileName?: string): string {
     }
   }
 
-  if (core.length >= 8 && core.length <= 28) {
-    for (let i = 4; i <= core.length - 4; i++) {
-      const joined = `${capsWord(core.slice(i))} ${capsWord(core.slice(0, i))}`;
-      if (isPlausiblePassengerName(joined)) return joined;
-    }
-  }
   return split;
 }
 
