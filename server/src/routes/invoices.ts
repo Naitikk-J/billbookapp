@@ -17,6 +17,11 @@ import {
   querySuffix,
   respondCached,
 } from '../utils/companyCache';
+import {
+  INVOICE_LIST_SELECT,
+  parseInvoiceListLimit,
+  parseInvoiceListView,
+} from '../utils/invoiceListQuery';
 import { companyFilter, toCompanyObjectId } from '../utils/companyScope';
 
 const router = Router();
@@ -214,6 +219,8 @@ router.get(
     const q = String(req.query.q ?? '').trim();
     const status = String(req.query.status ?? '').trim();
     const kind = String(req.query.kind ?? '').trim();
+    const view = parseInvoiceListView(req.query.view);
+    const limit = parseInvoiceListLimit(req.query.limit, view === 'summary' ? 120 : 500);
     const companyId = req.user!.companyId as string;
     const filter: Record<string, unknown> = { ...companyFilter(companyId) };
     if (status) filter.status = status;
@@ -229,13 +236,14 @@ router.get(
       companyId,
       'invoices',
       'list',
-      querySuffix({ q, status, kind })
+      querySuffix({ q, status, kind, view, limit: String(limit) })
     );
     await respondCached(res, key, CACHE_TTL.invoicesListMs, async () => {
-      const invoices = await Invoice.find(filter)
-        .sort({ issueDate: -1, createdAt: -1 })
-        .limit(500)
-        .lean();
+      let query = Invoice.find(filter).sort({ issueDate: -1, createdAt: -1 }).limit(limit);
+      if (view === 'summary') {
+        query = query.select(INVOICE_LIST_SELECT);
+      }
+      const invoices = await query.lean();
       return { invoices };
     });
   })
@@ -244,7 +252,7 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const invoice = await Invoice.findOne({ _id: req.params.id, companyId: req.user!.companyId });
+    const invoice = await Invoice.findOne({ _id: req.params.id, companyId: req.user!.companyId }).lean();
     if (!invoice) throw ApiError.notFound('Invoice not found');
     res.json({ invoice });
   })

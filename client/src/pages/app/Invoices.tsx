@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { keepPreviousData } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -37,21 +38,30 @@ import {
 } from '@/components/ui/dropdown';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { AiInvoiceDialog } from '@/components/AiInvoiceDialog';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 export default function InvoicesPage() {
   const qc = useQueryClient();
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query, 350);
   const [status, setStatus] = useState<string>('all');
   const [aiOpen, setAiOpen] = useState(false);
 
   const list = useQuery({
-    queryKey: ['invoices', query, status],
+    queryKey: ['invoices', debouncedQuery, status],
     queryFn: async () => {
       const res = await api.get<{ invoices: Invoice[] }>('/invoices', {
-        params: { q: query, status: status === 'all' ? '' : status },
+        params: {
+          q: debouncedQuery,
+          status: status === 'all' ? '' : status,
+          view: 'summary',
+          limit: 200,
+        },
       });
       return res.data.invoices;
     },
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   });
 
   const dup = useMutation({

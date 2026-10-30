@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -10,15 +11,12 @@ import {
   Sparkles,
   TrendingUp,
 } from 'lucide-react';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+
+const RevenueTrendChart = lazy(() =>
+  import('@/components/dashboard/RevenueTrendChart').then((m) => ({
+    default: m.RevenueTrendChart,
+  }))
+);
 
 import { api } from '@/lib/api';
 import type { DashboardStats, Invoice } from '@/lib/types';
@@ -46,8 +44,10 @@ export default function DashboardPage() {
   const invoicesQuery = useQuery({
     queryKey: ['recent-invoices'],
     queryFn: async () => {
-      const res = await api.get<{ invoices: Invoice[] }>('/invoices');
-      return res.data.invoices.slice(0, 6);
+      const res = await api.get<{ invoices: Invoice[] }>('/invoices', {
+        params: { limit: 6, view: 'summary' },
+      });
+      return res.data.invoices;
     },
     staleTime: 45_000,
   });
@@ -130,67 +130,10 @@ export default function DashboardPage() {
           <CardContent>
             {statsQuery.isLoading ? (
               <Skeleton className="h-72 w-full" />
-            ) : chartData.length === 0 ? (
-              <div className="grid h-72 place-items-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-                Create your first invoice to see revenue here.
-              </div>
             ) : (
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="grevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2A5BFF" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="#2A5BFF" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="greceived" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10B981" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      dataKey="month"
-                      stroke="hsl(var(--muted-foreground))"
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={12}
-                    />
-                    <YAxis
-                      stroke="hsl(var(--muted-foreground))"
-                      tickLine={false}
-                      axisLine={false}
-                      fontSize={12}
-                      tickFormatter={(v) =>
-                        v >= 100000 ? `${(v / 100000).toFixed(1)}L` : `${Math.round(v / 1000)}k`
-                      }
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--popover))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: 12,
-                        fontSize: 12,
-                      }}
-                      formatter={(value: number) => formatCurrency(value)}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke="#2A5BFF"
-                      strokeWidth={2}
-                      fill="url(#grevenue)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="received"
-                      stroke="#10B981"
-                      strokeWidth={2}
-                      fill="url(#greceived)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+                <RevenueTrendChart data={chartData} />
+              </Suspense>
             )}
           </CardContent>
         </Card>

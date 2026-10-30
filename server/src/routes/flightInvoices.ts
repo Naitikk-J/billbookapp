@@ -1,14 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { Customer } from '../models/Customer';
 import { ApiError } from '../utils/ApiError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
-import { extractFlights } from '../utils/flightAi';
-import { extractFlightBillCharges } from '../utils/flightBillInvoiceAi';
 import { buildFlightInvoiceDraft } from '../utils/flightInvoiceDraft';
-import { resolveGeminiApiKey } from '../utils/geminiKey';
+import { extractFromFlightPdfBase64 } from '../utils/flightPdfExtract';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -23,30 +20,31 @@ router.post(
   '/parse-pdf',
   validate(parsePdfSchema),
   asyncHandler(async (req, res) => {
-    const companyId = req.user!.companyId as string;
-    const apiKey = await resolveGeminiApiKey(companyId);
     const body = req.body as z.infer<typeof parsePdfSchema>;
     const base64 = body.base64.replace(/^data:.*?;base64,/, '');
-    const pdf = { base64, mimeType: body.mimeType || 'application/pdf' };
 
-    const [segments, charges, customers] = await Promise.all([
-      extractFlights({ apiKey, pdf }),
-      extractFlightBillCharges({ apiKey, pdf }),
-      Customer.find({ companyId }).select('name phone email city').sort({ name: 1 }).lean(),
-    ]);
+    const extraction = await extractFromFlightPdfBase64(base64, body.fileName);
 
-    if (segments.length === 0) {
-      throw ApiError.badRequest("Couldn't find flight details in that PDF. Try a clearer ticket or tax invoice PDF.");
+    if (extraction.segments.length === 0) {
+      throw ApiError.badRequest(
+        "Couldn't read flight details from that PDF. Supported: Air India e-ticket, IndiGo itinerary, Safarmate voucher."
+      );
     }
 
     const draft = buildFlightInvoiceDraft(
-      segments,
-      charges,
-      customers as Array<{ _id: unknown; name: string; phone?: string; email?: string; city?: string }>,
+      extraction.segments,
+      extraction.charges,
+      [],
       body.fileName
     );
 
-    res.json({ draft });
+    res.json({
+      draft,
+      extraction: {
+        format: extraction.format,
+        rawTextLength: extraction.rawTextLength,
+      },
+    });
   })
 );
 

@@ -50,9 +50,18 @@ router.get(
         { city: { $regex: q, $options: 'i' } },
       ];
     }
-    const key = companyCacheKey(companyId, 'customers', querySuffix({ q, kind: kind ?? '' }));
+    const view = String(req.query.view ?? '').trim().toLowerCase();
+    const key = companyCacheKey(
+      companyId,
+      'customers',
+      querySuffix({ q, kind: kind ?? '', view: view || 'full' })
+    );
     await respondCached(res, key, CACHE_TTL.catalogMs, async () => {
-      const customers = await Customer.find(filter).sort({ createdAt: -1 }).limit(500).lean();
+      let query = Customer.find(filter).sort({ createdAt: -1 }).limit(500);
+      if (view === 'picker') {
+        query = query.select('_id name phone email city gstNumber panNumber state address country postalCode kind');
+      }
+      const customers = await query.lean();
       return { customers };
     });
   })

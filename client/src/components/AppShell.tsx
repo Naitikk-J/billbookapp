@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -24,6 +25,8 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import { signOut } from '@/store/authSlice';
 import { initials } from '@/lib/format';
 import { AiInvoiceDialog } from './AiInvoiceDialog';
+import { api } from '@/lib/api';
+import type { Company } from '@/lib/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,8 +51,20 @@ export function AppShell() {
   const user = useAppSelector((s) => s.auth.user);
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+
+  useEffect(() => {
+    void qc.prefetchQuery({
+      queryKey: ['company'],
+      queryFn: async () => {
+        const res = await api.get<{ company: Company }>('/company');
+        return res.data.company;
+      },
+      staleTime: 120_000,
+    });
+  }, [qc]);
 
   function handleSignOut() {
     dispatch(signOut());

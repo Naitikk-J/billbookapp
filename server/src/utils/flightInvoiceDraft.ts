@@ -1,5 +1,5 @@
 import type { NormalisedFlight } from './flightAi';
-import type { FlightBillCharges } from './flightBillInvoiceAi';
+import type { FlightBillCharges } from './flightBillCharges';
 export const FLIGHT_VOUCHER_TEMPLATE = 'safarmate-flight-voucher';
 
 export interface FlightSegmentSnapshot {

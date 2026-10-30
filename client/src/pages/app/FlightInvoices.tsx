@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PDFDownloadLink, PDFViewer } from '@react-pdf/renderer';
+import { PDFDownloadLink } from '@react-pdf/renderer';
 import {
   Download,
   FileUp,
@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/cn';
+import { matchCustomerId } from '@/lib/matchCustomer';
+import { FlightPdfPreview } from '@/components/FlightPdfPreview';
 
 function draftToPreviewInvoice(
   draft: FlightInvoiceDraft,
@@ -106,27 +108,58 @@ export default function FlightInvoicesPage() {
   });
 
   const customersQuery = useQuery({
-    queryKey: ['customers'],
+    queryKey: ['customers', 'picker'],
     queryFn: async () => {
-      const res = await api.get<{ customers: Customer[] }>('/customers');
+      const res = await api.get<{ customers: Customer[] }>('/customers', {
+        params: { view: 'picker' },
+      });
       return res.data.customers;
     },
+    staleTime: 120_000,
   });
 
   const parsePdf = useMutation({
     mutationFn: async (f: File) => {
       const base64 = await fileToBase64(f);
-      const res = await api.post<{ draft: FlightInvoiceDraft }>('/flight-invoices/parse-pdf', {
+      const res = await api.post<{
+        draft: FlightInvoiceDraft;
+        extraction?: { format: string; rawTextLength: number };
+      }>('/flight-invoices/parse-pdf', {
         fileName: f.name,
         mimeType: f.type || 'application/pdf',
         base64,
       });
-      return res.data.draft;
+      return res.data;
     },
-    onSuccess: (d) => {
-      setDraft(d);
-      setCustomerId(d.matchedCustomerId ?? '');
-      toast.success('Flight bill read — check preview and pick customer to save.');
+    onSuccess: (data) => {
+      const customers =
+        qc.getQueryData<Customer[]>(['customers', 'picker']) ?? customersQuery.data ?? [];
+      const matched =
+        data.draft.matchedCustomerId ??
+        matchCustomerId(data.draft.customerHint.name ?? '', customers);
+      const draft = matched
+        ? {
+            ...data.draft,
+            matchedCustomerId: matched,
+            customerHint: {
+              ...data.draft.customerHint,
+              ...(() => {
+                const c = customers.find((x) => x._id === matched);
+                return c
+                  ? {
+                      phone: c.phone ?? data.draft.customerHint.phone,
+                      email: c.email ?? data.draft.customerHint.email,
+                      city: c.city ?? data.draft.customerHint.city,
+                    }
+                  : {};
+              })(),
+            },
+          }
+        : data.draft;
+      setDraft(draft);
+      setCustomerId(matched ?? '');
+      const fmt = data.extraction?.format?.replace(/_/g, ' ') ?? 'PDF';
+      toast.success(`Extracted (${fmt}) — check preview and save to share.`);
     },
     onError: (err) => toast.error(apiError(err)),
   });
@@ -208,13 +241,10 @@ export default function FlightInvoicesPage() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Flight invoices</h1>
             <p className="text-sm text-muted-foreground">
-            Drop an airline e-ticket or itinerary PDF — we build a Safarmate flight voucher (same logo as
-            your templates) to share with customers.
+            Drop an airline e-ticket or itinerary PDF — local parser (no AI) builds your Safarmate flight
+            voucher to share with customers.
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link to="/app/settings">Gemini key in Settings</Link>
-        </Button>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
@@ -338,9 +368,7 @@ export default function FlightInvoicesPage() {
           </CardHeader>
           <CardContent className="h-[640px] p-0">
             {pdfDoc ? (
-              <PDFViewer width="100%" height="100%" showToolbar>
-                {pdfDoc}
-              </PDFViewer>
+              <FlightPdfPreview document={pdfDoc} />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
                 <FileUp className="h-10 w-10 opacity-40" />
