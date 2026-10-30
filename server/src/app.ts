@@ -48,8 +48,15 @@ export function createApp(): Express {
   });
   app.use('/api/', limiter);
 
-  app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({ ok: true, env: env.nodeEnv, time: new Date().toISOString() });
+  app.get('/api/health', async (_req: Request, res: Response) => {
+    let db: 'connected' | 'disconnected' | 'error' = 'disconnected';
+    try {
+      await connectDB();
+      db = 'connected';
+    } catch {
+      db = 'error';
+    }
+    res.json({ ok: db === 'connected', env: env.nodeEnv, db, time: new Date().toISOString() });
   });
 
   app.use(async (_req: Request, _res: Response, next) => {

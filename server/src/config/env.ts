@@ -2,9 +2,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-function required(name: string, fallback?: string): string {
+function readEnv(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
-  if (value === undefined || value === '') {
+  return value ?? '';
+}
+
+function requireEnv(name: string): string {
+  const value = readEnv(name);
+  if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
@@ -13,9 +18,15 @@ function required(name: string, fallback?: string): string {
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 5000),
-  mongoUri: required('MONGODB_URI'),
-  jwtSecret: required('JWT_SECRET'),
-  jwtRefreshSecret: required('JWT_REFRESH_SECRET'),
+  get mongoUri(): string {
+    return requireEnv('MONGODB_URI');
+  },
+  get jwtSecret(): string {
+    return requireEnv('JWT_SECRET');
+  },
+  get jwtRefreshSecret(): string {
+    return requireEnv('JWT_REFRESH_SECRET');
+  },
   jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES ?? '15m',
   jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES ?? '30d',
   corsOrigin: (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
