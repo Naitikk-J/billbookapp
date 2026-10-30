@@ -49,8 +49,8 @@ export const INVOICE_TEMPLATES: InvoiceTemplateMeta[] = [
   },
   {
     id: 'hotel-booking-tax',
-    name: 'Hotel Booking Tax Invoice',
-    description: 'Accommodation tax invoice with booking strip and payment breakup.',
+    name: 'Travel Booking Tax Invoice',
+    description: 'GST tax invoice for hotel or flight bookings — booking strip and payment breakup.',
     category: 'hotel',
   },
 ];

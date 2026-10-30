@@ -149,6 +149,7 @@ export interface CustomerSnapshot {
 }
 
 export interface TravelDetails {
+  bookingType?: 'hotel' | 'flight';
   packageName?: string;
   destination?: string;
   startDate?: string;

@@ -53,8 +53,8 @@ export const TEMPLATES: TemplateOption[] = [
   },
   {
     id: 'hotel-booking-tax',
-    name: 'Hotel Booking Tax Invoice',
-    description: 'Accommodation tax invoice with booking strip, payment breakup, and QR slot.',
+    name: 'Travel Booking Tax Invoice',
+    description: 'Hotel or flight GST invoice with booking strip, payment breakup, and QR slot.',
     accent: 'from-[#1A6FD1] to-[#0D47A1]',
     render: ({ invoice, company }) => (
       <HotelBookingTaxTemplate invoice={invoice} company={company} />

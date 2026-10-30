@@ -29,6 +29,8 @@ const customerSchema = new Schema(
 
 customerSchema.index({ companyId: 1, name: 1 });
 customerSchema.index({ companyId: 1, email: 1 });
+customerSchema.index({ companyId: 1, kind: 1, name: 1 });
+customerSchema.index({ companyId: 1, createdAt: -1 });
 
 export type CustomerDoc = HydratedDocument<InferSchemaType<typeof customerSchema>> & {
   _id: Types.ObjectId;

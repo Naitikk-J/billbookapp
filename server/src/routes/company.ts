@@ -5,6 +5,12 @@ import { ApiError } from '../utils/ApiError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
+import {
+  CACHE_TTL,
+  companyCacheKey,
+  invalidateCompanyCache,
+  respondCached,
+} from '../utils/companyCache';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -49,12 +55,7 @@ const updateSchema = z
   })
   .partial();
 
-function sanitize<T extends { toObject?: () => Record<string, unknown> } | Record<string, unknown>>(
-  doc: T
-): Record<string, unknown> {
-  const obj = (typeof (doc as { toObject?: unknown }).toObject === 'function'
-    ? (doc as { toObject: () => Record<string, unknown> }).toObject()
-    : (doc as Record<string, unknown>)) as Record<string, unknown>;
+function sanitizeRecord(obj: Record<string, unknown>): Record<string, unknown> {
   const gmail = (obj.gmailAppPassword as string | undefined) ?? '';
   const gemini = (obj.geminiApiKey as string | undefined) ?? '';
   return {
@@ -69,9 +70,13 @@ function sanitize<T extends { toObject?: () => Record<string, unknown> } | Recor
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const company = await Company.findById(req.user!.companyId);
-    if (!company) throw ApiError.notFound('Company not found');
-    res.json({ company: sanitize(company) });
+    const companyId = req.user!.companyId as string;
+    const key = companyCacheKey(companyId, 'profile');
+    await respondCached(res, key, CACHE_TTL.companyMs, async () => {
+      const company = await Company.findById(companyId).lean();
+      if (!company) throw ApiError.notFound('Company not found');
+      return { company: sanitizeRecord(company as Record<string, unknown>) };
+    });
   })
 );
 
@@ -83,9 +88,11 @@ router.patch(
     // ignore masked values coming back from the client
     if (body.gmailAppPassword === '••••••••') delete body.gmailAppPassword;
     if (body.geminiApiKey === '••••••••') delete body.geminiApiKey;
-    const company = await Company.findByIdAndUpdate(req.user!.companyId, body, { new: true });
+    const companyId = req.user!.companyId as string;
+    const company = await Company.findByIdAndUpdate(companyId, body, { new: true }).lean();
     if (!company) throw ApiError.notFound('Company not found');
-    res.json({ company: sanitize(company) });
+    invalidateCompanyCache(companyId);
+    res.json({ company: sanitizeRecord(company as Record<string, unknown>) });
   })
 );
 

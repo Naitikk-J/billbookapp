@@ -5,6 +5,13 @@ import { ApiError } from '../utils/ApiError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
+import {
+  CACHE_TTL,
+  companyCacheKey,
+  invalidateCompanyCache,
+  querySuffix,
+  respondCached,
+} from '../utils/companyCache';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -31,8 +38,12 @@ router.get(
         { category: { $regex: q, $options: 'i' } },
       ];
     }
-    const products = await Product.find(filter).sort({ createdAt: -1 }).limit(500);
-    res.json({ products });
+    const companyId = req.user!.companyId as string;
+    const key = companyCacheKey(companyId, 'products', querySuffix({ q }));
+    await respondCached(res, key, CACHE_TTL.catalogMs, async () => {
+      const products = await Product.find(filter).sort({ createdAt: -1 }).limit(500).lean();
+      return { products };
+    });
   })
 );
 
@@ -40,7 +51,9 @@ router.post(
   '/',
   validate(productSchema),
   asyncHandler(async (req, res) => {
-    const product = await Product.create({ ...req.body, companyId: req.user!.companyId });
+    const companyId = req.user!.companyId as string;
+    const product = await Product.create({ ...req.body, companyId });
+    invalidateCompanyCache(companyId);
     res.status(201).json({ product });
   })
 );
@@ -55,6 +68,7 @@ router.patch(
       { new: true }
     );
     if (!product) throw ApiError.notFound('Product not found');
+    invalidateCompanyCache(req.user!.companyId as string);
     res.json({ product });
   })
 );
@@ -68,6 +82,7 @@ router.delete(
       { new: true }
     );
     if (!product) throw ApiError.notFound('Product not found');
+    invalidateCompanyCache(req.user!.companyId as string);
     res.json({ ok: true });
   })
 );

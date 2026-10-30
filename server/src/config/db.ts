@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { env } from './env';
+import { ensureDbIndexes } from './ensureIndexes';
 
 type ConnState = { promise: Promise<typeof mongoose> | null; conn: typeof mongoose | null };
 
@@ -13,9 +14,12 @@ export async function connectDB(): Promise<typeof mongoose> {
     mongoose.set('strictQuery', true);
     cached.promise = mongoose.connect(env.mongoUri, {
       maxPoolSize: 10,
+      minPoolSize: 2,
       serverSelectionTimeoutMS: 10_000,
+      maxIdleTimeMS: 30_000,
     });
   }
   cached.conn = await cached.promise;
+  await ensureDbIndexes();
   return cached.conn;
 }

@@ -40,6 +40,7 @@ export default function DashboardPage() {
       const res = await api.get<DashboardStats>('/invoices/stats');
       return res.data;
     },
+    staleTime: 45_000,
   });
 
   const invoicesQuery = useQuery({
@@ -48,6 +49,7 @@ export default function DashboardPage() {
       const res = await api.get<{ invoices: Invoice[] }>('/invoices');
       return res.data.invoices.slice(0, 6);
     },
+    staleTime: 45_000,
   });
 
   const stats = statsQuery.data;

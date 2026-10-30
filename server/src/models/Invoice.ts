@@ -16,6 +16,7 @@ const lineItemSchema = new Schema(
 
 const travelDetailsSchema = new Schema(
   {
+    bookingType: { type: String, enum: ['hotel', 'flight', ''], default: '' },
     packageName: { type: String, default: '' },
     destination: { type: String, default: '' },
     startDate: { type: Date },
@@ -110,6 +111,10 @@ const invoiceSchema = new Schema(
 
 invoiceSchema.index({ companyId: 1, number: 1 }, { unique: true });
 invoiceSchema.index({ companyId: 1, issueDate: -1 });
+invoiceSchema.index({ companyId: 1, issueDate: -1, createdAt: -1 });
+invoiceSchema.index({ companyId: 1, status: 1, issueDate: -1 });
+invoiceSchema.index({ companyId: 1, kind: 1, issueDate: -1 });
+invoiceSchema.index({ companyId: 1, status: 1, balanceDue: 1 });
 
 export type InvoiceDoc = HydratedDocument<InferSchemaType<typeof invoiceSchema>> & {
   _id: Types.ObjectId;

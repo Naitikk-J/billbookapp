@@ -5,6 +5,13 @@ import { ApiError } from '../utils/ApiError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
+import {
+  CACHE_TTL,
+  companyCacheKey,
+  invalidateCompanyCache,
+  querySuffix,
+  respondCached,
+} from '../utils/companyCache';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -41,8 +48,12 @@ router.get(
         { city: { $regex: q, $options: 'i' } },
       ];
     }
-    const customers = await Customer.find(filter).sort({ createdAt: -1 }).limit(500);
-    res.json({ customers });
+    const companyId = req.user!.companyId as string;
+    const key = companyCacheKey(companyId, 'customers', querySuffix({ q, kind: kind ?? '' }));
+    await respondCached(res, key, CACHE_TTL.catalogMs, async () => {
+      const customers = await Customer.find(filter).sort({ createdAt: -1 }).limit(500).lean();
+      return { customers };
+    });
   })
 );
 
@@ -50,7 +61,9 @@ router.post(
   '/',
   validate(customerSchema),
   asyncHandler(async (req, res) => {
-    const customer = await Customer.create({ ...req.body, companyId: req.user!.companyId });
+    const companyId = req.user!.companyId as string;
+    const customer = await Customer.create({ ...req.body, companyId });
+    invalidateCompanyCache(companyId);
     res.status(201).json({ customer });
   })
 );
@@ -74,6 +87,7 @@ router.patch(
       { new: true }
     );
     if (!customer) throw ApiError.notFound('Customer not found');
+    invalidateCompanyCache(req.user!.companyId as string);
     res.json({ customer });
   })
 );
@@ -86,6 +100,7 @@ router.delete(
       companyId: req.user!.companyId,
     });
     if (!result) throw ApiError.notFound('Customer not found');
+    invalidateCompanyCache(req.user!.companyId as string);
     res.json({ ok: true });
   })
 );

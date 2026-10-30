@@ -106,6 +106,7 @@ export default function LedgerPage() {
       const res = await api.get<{ company: Company }>('/company');
       return res.data.company;
     },
+    staleTime: 120_000,
   });
 
   const summary = useQuery({
@@ -114,6 +115,7 @@ export default function LedgerPage() {
       const res = await api.get<LedgerSummary>('/ledger/summary', { params: { kind: tab } });
       return res.data;
     },
+    staleTime: 45_000,
   });
 
   const filteredAccounts = useMemo(() => {

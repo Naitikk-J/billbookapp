@@ -34,6 +34,13 @@ import { formatCurrency, toInputDate } from '@/lib/format';
 import { TEMPLATES } from '@/pdf/registry';
 import { cn } from '@/lib/cn';
 import type { AiInvoiceDraft } from '@/components/AiInvoiceDialog';
+import {
+  BOOKING_TAX_TEMPLATE,
+  buildTravelPayload,
+  inferBookingType,
+  travelForTemplateSwitch,
+  type BookingType,
+} from '@/lib/bookingTravel';
 
 type Kind = InvoiceKind;
 type TaxMode = 'intra' | 'inter' | 'none';
@@ -61,6 +68,7 @@ interface FormValues {
   terms: string;
   items: FormItem[];
   travel: {
+    bookingType: BookingType;
     packageName: string;
     destination: string;
     startDate: string;
@@ -85,6 +93,7 @@ interface FormValues {
 
 function emptyTravel(): FormValues['travel'] {
   return {
+    bookingType: 'hotel',
     packageName: '',
     destination: '',
     startDate: '',
@@ -204,28 +213,36 @@ export default function InvoiceBuilderPage() {
               discountPercent: it.discountPercent ?? 0,
             }))
           : [emptyItem()],
-        travel: {
-          ...emptyTravel(),
-          packageName: inv.travelDetails?.packageName ?? '',
-          destination: inv.travelDetails?.destination ?? '',
-          startDate: toInputDate(inv.travelDetails?.startDate ?? null),
-          endDate: toInputDate(inv.travelDetails?.endDate ?? null),
-          adults: inv.travelDetails?.adults ?? 0,
-          children: inv.travelDetails?.children ?? 0,
-          hotel: inv.travelDetails?.hotel ?? '',
-          flight: inv.travelDetails?.flight ?? '',
-          vehicle: inv.travelDetails?.vehicle ?? '',
-          bookingId: inv.travelDetails?.bookingId ?? '',
-          hotelCity: inv.travelDetails?.hotelCity ?? '',
-          travellerName: inv.travelDetails?.travellerName ?? '',
-          travellerPan: inv.travelDetails?.travellerPan ?? '',
-          panHolderName: inv.travelDetails?.panHolderName ?? '',
-          advancedReceiptVoucherNo: inv.travelDetails?.advancedReceiptVoucherNo ?? '',
-          placeOfSupply: inv.travelDetails?.placeOfSupply ?? '',
-          transactionalCategory: inv.travelDetails?.transactionalCategory ?? '',
-          transactionalDetails: inv.travelDetails?.transactionalDetails ?? 'RG',
-          serviceDescription: inv.travelDetails?.serviceDescription ?? '',
-        },
+        travel: (() => {
+          const td = inv.travelDetails ?? {};
+          const merged: FormValues['travel'] = {
+            ...emptyTravel(),
+            bookingType: (td.bookingType as BookingType | undefined) ?? inferBookingType(td),
+            packageName: td.packageName ?? '',
+            destination: td.destination ?? '',
+            startDate: toInputDate(td.startDate ?? null),
+            endDate: toInputDate(td.endDate ?? null),
+            adults: td.adults ?? 0,
+            children: td.children ?? 0,
+            hotel: td.hotel ?? '',
+            flight: td.flight ?? '',
+            vehicle: td.vehicle ?? '',
+            bookingId: td.bookingId ?? '',
+            hotelCity: td.hotelCity ?? '',
+            travellerName: td.travellerName ?? '',
+            travellerPan: td.travellerPan ?? '',
+            panHolderName: td.panHolderName ?? '',
+            advancedReceiptVoucherNo: td.advancedReceiptVoucherNo ?? '',
+            placeOfSupply: td.placeOfSupply ?? '',
+            transactionalCategory: td.transactionalCategory ?? '',
+            transactionalDetails: td.transactionalDetails ?? 'RG',
+            serviceDescription: td.serviceDescription ?? '',
+          };
+          return {
+            ...emptyTravel(),
+            ...buildTravelPayload(inv.template, merged),
+          } as FormValues['travel'];
+        })(),
       });
     }
   }, [existing.data, form]);
@@ -309,7 +326,8 @@ export default function InvoiceBuilderPage() {
   const taxMode = useWatch({ control: form.control, name: 'taxMode' });
   const currency = useWatch({ control: form.control, name: 'currency' });
   const template = useWatch({ control: form.control, name: 'template' });
-  const isHotelTaxTemplate = template === 'hotel-booking-tax';
+  const isBookingTaxTemplate = template === BOOKING_TAX_TEMPLATE;
+  const bookingType = useWatch({ control: form.control, name: 'travel.bookingType' }) ?? 'hotel';
 
   const totals = useMemo(
     () => computeTotals(watchedItems ?? [], taxMode ?? 'intra'),
@@ -350,6 +368,21 @@ export default function InvoiceBuilderPage() {
         );
       }
 
+      const travelPayload = buildTravelPayload(values.template, values.travel);
+      const travelDetails: Record<string, unknown> = {
+        ...travelPayload,
+        startDate: travelPayload.startDate
+          ? new Date(travelPayload.startDate).toISOString()
+          : undefined,
+        endDate: travelPayload.endDate
+          ? new Date(travelPayload.endDate).toISOString()
+          : undefined,
+      };
+      if (values.template !== BOOKING_TAX_TEMPLATE) {
+        travelDetails.adults = Math.max(0, Math.floor(Number(travelPayload.adults) || 0));
+        travelDetails.children = Math.max(0, Math.floor(Number(travelPayload.children) || 0));
+      }
+
       const payload = {
         kind: values.kind,
         customerId: values.customerId,
@@ -361,31 +394,7 @@ export default function InvoiceBuilderPage() {
         notes: values.notes,
         terms: values.terms,
         items: cleanedItems,
-        travelDetails: {
-          packageName: values.travel.packageName,
-          destination: values.travel.destination,
-          startDate: values.travel.startDate
-            ? new Date(values.travel.startDate).toISOString()
-            : undefined,
-          endDate: values.travel.endDate
-            ? new Date(values.travel.endDate).toISOString()
-            : undefined,
-          adults: Math.max(0, Math.floor(Number(values.travel.adults) || 0)),
-          children: Math.max(0, Math.floor(Number(values.travel.children) || 0)),
-          hotel: values.travel.hotel,
-          flight: values.travel.flight,
-          vehicle: values.travel.vehicle,
-          bookingId: values.travel.bookingId,
-          hotelCity: values.travel.hotelCity,
-          travellerName: values.travel.travellerName,
-          travellerPan: values.travel.travellerPan,
-          panHolderName: values.travel.panHolderName,
-          advancedReceiptVoucherNo: values.travel.advancedReceiptVoucherNo,
-          placeOfSupply: values.travel.placeOfSupply,
-          transactionalCategory: values.travel.transactionalCategory,
-          transactionalDetails: values.travel.transactionalDetails,
-          serviceDescription: values.travel.serviceDescription,
-        },
+        travelDetails,
       };
       const url = id ? `/invoices/${id}` : '/invoices';
       const method = id ? 'patch' : 'post';
@@ -649,17 +658,41 @@ export default function InvoiceBuilderPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-emerald-500" />
-                {isHotelTaxTemplate ? 'Hotel booking details' : 'Travel details (optional)'}
+                {isBookingTaxTemplate ? 'Booking details (hotel or flight)' : 'Travel details (optional)'}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                {isHotelTaxTemplate
-                  ? 'Required for the hotel tax invoice PDF. Company GST/PAN/QR come from Settings.'
+                {isBookingTaxTemplate
+                  ? 'Required for the travel booking tax PDF. Switch type to match hotel or flight bills.'
                   : 'For travel packages, tours, and trips — shows up on the PDF.'}
               </p>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
-              {isHotelTaxTemplate ? (
+              {isBookingTaxTemplate ? (
                 <>
+                  <div className="space-y-1.5 md:col-span-3">
+                    <Label>Booking type</Label>
+                    <Select
+                      value={bookingType}
+                      onValueChange={(v) => {
+                        const next = v as BookingType;
+                        form.setValue(
+                          'travel',
+                          buildTravelPayload(BOOKING_TAX_TEMPLATE, {
+                            ...form.getValues('travel'),
+                            bookingType: next,
+                          }) as FormValues['travel']
+                        );
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hotel">Hotel stay</SelectItem>
+                        <SelectItem value="flight">Flight</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="space-y-1.5 md:col-span-2">
                     <Label>Booking ID</Label>
                     <Input placeholder="NH74220527700620P2" {...form.register('travel.bookingId')} />
@@ -668,22 +701,45 @@ export default function InvoiceBuilderPage() {
                     <Label>Advanced receipt voucher no.</Label>
                     <Input {...form.register('travel.advancedReceiptVoucherNo')} />
                   </div>
-                  <div className="space-y-1.5 md:col-span-2">
-                    <Label>Hotel name</Label>
-                    <Input placeholder="Ramada Hong Kong Grand View" {...form.register('travel.hotel')} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Hotel city</Label>
-                    <Input placeholder="Hong Kong" {...form.register('travel.hotelCity')} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Check-in</Label>
-                    <Input type="date" {...form.register('travel.startDate')} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Check-out</Label>
-                    <Input type="date" {...form.register('travel.endDate')} />
-                  </div>
+                  {bookingType === 'flight' ? (
+                    <>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <Label>Flight / airline</Label>
+                        <Input placeholder="IndiGo 6E-202 · DEL–BOM" {...form.register('travel.flight')} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Sector / destination</Label>
+                        <Input placeholder="Mumbai" {...form.register('travel.destination')} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Departure date</Label>
+                        <Input type="date" {...form.register('travel.startDate')} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Return date (optional)</Label>
+                        <Input type="date" {...form.register('travel.endDate')} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <Label>Hotel name</Label>
+                        <Input placeholder="Ramada Hong Kong Grand View" {...form.register('travel.hotel')} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Hotel city</Label>
+                        <Input placeholder="Hong Kong" {...form.register('travel.hotelCity')} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Check-in</Label>
+                        <Input type="date" {...form.register('travel.startDate')} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Check-out</Label>
+                        <Input type="date" {...form.register('travel.endDate')} />
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-1.5">
                     <Label>Place of supply</Label>
                     <Input placeholder="Haryana" {...form.register('travel.placeOfSupply')} />
@@ -833,7 +889,13 @@ export default function InvoiceBuilderPage() {
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => form.setValue('template', t.id)}
+                    onClick={() => {
+                      const prev = form.getValues('template');
+                      if (prev === t.id) return;
+                      const travel = travelForTemplateSwitch(prev, t.id, form.getValues('travel'));
+                      form.setValue('template', t.id);
+                      form.setValue('travel', travel as FormValues['travel']);
+                    }}
                     className={cn(
                       'flex items-center gap-3 rounded-xl border p-3 text-left transition-all',
                       template === t.id

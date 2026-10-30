@@ -17,6 +17,7 @@ const productSchema = new Schema(
 );
 
 productSchema.index({ companyId: 1, name: 1 });
+productSchema.index({ companyId: 1, isArchived: 1, createdAt: -1 });
 
 export type ProductDoc = HydratedDocument<InferSchemaType<typeof productSchema>> & {
   _id: Types.ObjectId;

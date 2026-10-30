@@ -22,6 +22,8 @@ const ledgerEntrySchema = new Schema(
 );
 
 ledgerEntrySchema.index({ companyId: 1, customerId: 1, date: -1 });
+ledgerEntrySchema.index({ companyId: 1, date: -1 });
+ledgerEntrySchema.index({ companyId: 1, customerId: 1, kind: 1 });
 
 export type LedgerEntryDoc = HydratedDocument<InferSchemaType<typeof ledgerEntrySchema>> & {
   _id: Types.ObjectId;

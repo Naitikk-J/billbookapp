@@ -10,6 +10,13 @@ import { validate } from '../middleware/validate';
 import { computeTotals } from '../utils/totals';
 import { INVOICE_TEMPLATES, normalizeTemplateId, type InvoiceTemplateId } from '../config/invoiceTemplates';
 import { normalizeTravelDetails, validateTravelForTemplate } from '../utils/invoiceTravel';
+import {
+  CACHE_TTL,
+  companyCacheKey,
+  invalidateCompanyCache,
+  querySuffix,
+  respondCached,
+} from '../utils/companyCache';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -26,6 +33,7 @@ const lineItemSchema = z.object({
 
 const travelSchema = z
   .object({
+    bookingType: z.enum(['hotel', 'flight']).optional(),
     packageName: z.string().max(200).optional().default(''),
     destination: z.string().max(200).optional().default(''),
     startDate: z.string().datetime().optional().or(z.literal('')),
@@ -121,7 +129,9 @@ async function nextNumber(
 router.get(
   '/templates',
   asyncHandler(async (_req, res) => {
-    res.json({ templates: INVOICE_TEMPLATES });
+    await respondCached(res, 'global:invoice-templates', CACHE_TTL.templatesMs, async () => ({
+      templates: INVOICE_TEMPLATES,
+    }));
   })
 );
 
@@ -129,66 +139,69 @@ router.get(
   '/stats',
   asyncHandler(async (req, res) => {
     const companyId = req.user!.companyId as string;
-    const cid = new (Invoice.base as typeof import('mongoose')).Types.ObjectId(companyId);
-    const now = new Date();
-    const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const key = companyCacheKey(companyId, 'invoices', 'stats');
+    await respondCached(res, key, CACHE_TTL.invoiceStatsMs, async () => {
+      const cid = new (Invoice.base as typeof import('mongoose')).Types.ObjectId(companyId);
+      const now = new Date();
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-    const [todayAgg, monthAgg, pendingAgg, paidAgg, statusAgg, monthly] = await Promise.all([
-      Invoice.aggregate([
-        { $match: { companyId: cid, issueDate: { $gte: startOfDay } } },
-        { $group: { _id: null, total: { $sum: '$amountPaid' } } },
-      ]),
-      Invoice.aggregate([
-        { $match: { companyId: cid, issueDate: { $gte: startOfMonth } } },
-        { $group: { _id: null, total: { $sum: '$amountPaid' }, count: { $sum: 1 } } },
-      ]),
-      Invoice.aggregate([
-        {
-          $match: {
-            companyId: cid,
-            status: { $in: ['sent', 'partial', 'overdue'] },
+      const [todayAgg, monthAgg, pendingAgg, paidAgg, statusAgg, monthly] = await Promise.all([
+        Invoice.aggregate([
+          { $match: { companyId: cid, issueDate: { $gte: startOfDay } } },
+          { $group: { _id: null, total: { $sum: '$amountPaid' } } },
+        ]),
+        Invoice.aggregate([
+          { $match: { companyId: cid, issueDate: { $gte: startOfMonth } } },
+          { $group: { _id: null, total: { $sum: '$amountPaid' }, count: { $sum: 1 } } },
+        ]),
+        Invoice.aggregate([
+          {
+            $match: {
+              companyId: cid,
+              status: { $in: ['sent', 'partial', 'overdue'] },
+            },
           },
-        },
-        { $group: { _id: null, total: { $sum: '$balanceDue' }, count: { $sum: 1 } } },
-      ]),
-      Invoice.countDocuments({ companyId, status: 'paid' }),
-      Invoice.aggregate([
-        { $match: { companyId: cid } },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
-      Invoice.aggregate([
-        {
-          $match: {
-            companyId: cid,
-            issueDate: { $gte: sixMonthsAgo },
+          { $group: { _id: null, total: { $sum: '$balanceDue' }, count: { $sum: 1 } } },
+        ]),
+        Invoice.countDocuments({ companyId, status: 'paid' }),
+        Invoice.aggregate([
+          { $match: { companyId: cid } },
+          { $group: { _id: '$status', count: { $sum: 1 } } },
+        ]),
+        Invoice.aggregate([
+          {
+            $match: {
+              companyId: cid,
+              issueDate: { $gte: sixMonthsAgo },
+            },
           },
-        },
-        {
-          $group: {
-            _id: { y: { $year: '$issueDate' }, m: { $month: '$issueDate' } },
-            revenue: { $sum: '$grandTotal' },
-            received: { $sum: '$amountPaid' },
+          {
+            $group: {
+              _id: { y: { $year: '$issueDate' }, m: { $month: '$issueDate' } },
+              revenue: { $sum: '$grandTotal' },
+              received: { $sum: '$amountPaid' },
+            },
           },
-        },
-        { $sort: { '_id.y': 1, '_id.m': 1 } },
-      ]),
-    ]);
+          { $sort: { '_id.y': 1, '_id.m': 1 } },
+        ]),
+      ]);
 
-    res.json({
-      today: { revenue: todayAgg[0]?.total ?? 0 },
-      month: { revenue: monthAgg[0]?.total ?? 0, count: monthAgg[0]?.count ?? 0 },
-      pending: { total: pendingAgg[0]?.total ?? 0, count: pendingAgg[0]?.count ?? 0 },
-      paidCount: paidAgg,
-      byStatus: Object.fromEntries(statusAgg.map((s) => [s._id, s.count])),
-      monthly: monthly.map((m) => ({
-        year: m._id.y,
-        month: m._id.m,
-        revenue: m.revenue,
-        received: m.received,
-      })),
+      return {
+        today: { revenue: todayAgg[0]?.total ?? 0 },
+        month: { revenue: monthAgg[0]?.total ?? 0, count: monthAgg[0]?.count ?? 0 },
+        pending: { total: pendingAgg[0]?.total ?? 0, count: pendingAgg[0]?.count ?? 0 },
+        paidCount: paidAgg,
+        byStatus: Object.fromEntries(statusAgg.map((s) => [s._id, s.count])),
+        monthly: monthly.map((m) => ({
+          year: m._id.y,
+          month: m._id.m,
+          revenue: m.revenue,
+          received: m.received,
+        })),
+      };
     });
   })
 );
@@ -209,8 +222,20 @@ router.get(
         { 'travelDetails.destination': { $regex: q, $options: 'i' } },
       ];
     }
-    const invoices = await Invoice.find(filter).sort({ issueDate: -1, createdAt: -1 }).limit(500);
-    res.json({ invoices });
+    const companyId = req.user!.companyId as string;
+    const key = companyCacheKey(
+      companyId,
+      'invoices',
+      'list',
+      querySuffix({ q, status, kind })
+    );
+    await respondCached(res, key, CACHE_TTL.invoicesListMs, async () => {
+      const invoices = await Invoice.find(filter)
+        .sort({ issueDate: -1, createdAt: -1 })
+        .limit(500)
+        .lean();
+      return { invoices };
+    });
   })
 );
 
@@ -277,6 +302,7 @@ router.post(
       tags: body.tags,
     });
 
+    invalidateCompanyCache(companyId);
     res.status(201).json({ invoice });
   })
 );
@@ -340,12 +366,14 @@ router.patch(
               typeof travelSchema
             >);
       existing.set('travelDetails', prepareTravel(templateId, travelInput, customer));
+      existing.markModified('travelDetails');
     }
 
     if (body.issueDate) existing.issueDate = new Date(body.issueDate);
     if (body.dueDate) existing.dueDate = new Date(body.dueDate);
 
     await existing.save();
+    invalidateCompanyCache(req.user!.companyId as string);
     res.json({ invoice: existing });
   })
 );
@@ -383,6 +411,7 @@ router.post(
     if (invoice.balanceDue === 0) invoice.status = 'paid';
     else if (invoice.amountPaid > 0) invoice.status = 'partial';
     await invoice.save();
+    invalidateCompanyCache(req.user!.companyId as string);
     res.json({ invoice });
   })
 );
@@ -405,6 +434,7 @@ router.post(
       createdAt: undefined,
       updatedAt: undefined,
     });
+    invalidateCompanyCache(req.user!.companyId as string);
     res.status(201).json({ invoice: copy });
   })
 );
@@ -417,6 +447,7 @@ router.delete(
       companyId: req.user!.companyId,
     });
     if (!result) throw ApiError.notFound('Invoice not found');
+    invalidateCompanyCache(req.user!.companyId as string);
     res.json({ ok: true });
   })
 );

@@ -159,8 +159,16 @@ function splitAmounts(invoice: Invoice) {
   }
   const discount = invoice.discountTotal || 0;
   const grand = invoice.grandTotal || 0;
-  const accommodation = Math.round((grand + discount - serviceFees + Number.EPSILON) * 100) / 100;
-  return { accommodation, serviceFees, discount, grand };
+  const baseCharges = Math.round((grand + discount - serviceFees + Number.EPSILON) * 100) / 100;
+  return { baseCharges, serviceFees, discount, grand };
+}
+
+function resolveBookingType(invoice: Invoice): 'hotel' | 'flight' {
+  const td = invoice.travelDetails ?? {};
+  const explicit = clean(td.bookingType);
+  if (explicit === 'hotel' || explicit === 'flight') return explicit;
+  if (clean(td.flight) && !clean(td.hotel)) return 'flight';
+  return 'hotel';
 }
 
 function resolveBookingId(invoice: Invoice): string {
@@ -210,16 +218,26 @@ export function HotelBookingTaxTemplate({
     clean(td.transactionalCategory) || (clean(customer.gstNumber) ? 'REG/B2B' : 'REG/B2C');
   const txnDetails = clean(td.transactionalDetails) || 'RG';
   const sac = clean(invoice.items.find((it) => clean(it.hsnCode))?.hsnCode) || '998552';
+  const bookingType = resolveBookingType(invoice);
   const serviceDesc =
     clean(td.serviceDescription) ||
     clean(invoice.items[0]?.description) ||
-    'Reservation service for accommodation, tour operator and tourist assistance services';
+    (bookingType === 'flight'
+      ? 'Reservation service for air transport, tour operator and tourist assistance services'
+      : 'Reservation service for accommodation, tour operator and tourist assistance services');
   const travellerName = clean(td.travellerName) || clean(customer.name) || '—';
   const travellerPan = clean(td.travellerPan) || clean(customer.panNumber);
   const panHolderName = clean(td.panHolderName) || travellerName.toUpperCase();
   const voucherNo = clean(td.advancedReceiptVoucherNo);
   const hotelCity = (clean(td.hotelCity) || clean(td.destination) || clean(customer.city) || '—').toUpperCase();
-  const { accommodation, serviceFees, discount, grand } = splitAmounts(invoice);
+  const sector = (clean(td.destination) || clean(td.hotelCity) || '—').toUpperCase();
+  const { baseCharges, serviceFees, discount, grand } = splitAmounts(invoice);
+  const primaryChargeLabel =
+    bookingType === 'flight'
+      ? '*Airfare / Flight Charges* (Inclusive of applicable taxes)'
+      : '*Accommodation Charges* (Inclusive of applicable taxes)';
+  const discountLabel =
+    bookingType === 'flight' ? 'Airline / supplier funded discount' : 'Hotel funded discount';
   const qrUrl = clean(company?.paymentQrUrl);
 
   return (
@@ -288,39 +306,60 @@ export function HotelBookingTaxTemplate({
         </View>
 
         <View style={styles.bookingStrip}>
-          <View style={styles.bookingCell}>
-            <Text style={styles.bookingLabel}>Hotel Name</Text>
-            <Text style={styles.bookingValue}>{clean(td.hotel) || clean(td.packageName) || '—'}</Text>
-          </View>
-          <View style={styles.bookingCell}>
-            <Text style={styles.bookingLabel}>Hotel City</Text>
-            <Text style={styles.bookingValue}>{hotelCity}</Text>
-          </View>
-          <View style={styles.bookingCell}>
-            <Text style={styles.bookingLabel}>Check-in</Text>
-            <Text style={styles.bookingValue}>{fmtStayDate(td.startDate)}</Text>
-          </View>
-          <View style={styles.bookingCellLast}>
-            <Text style={styles.bookingLabel}>Check-Out</Text>
-            <Text style={styles.bookingValue}>{fmtStayDate(td.endDate)}</Text>
-          </View>
+          {bookingType === 'flight' ? (
+            <>
+              <View style={styles.bookingCell}>
+                <Text style={styles.bookingLabel}>Flight / Airline</Text>
+                <Text style={styles.bookingValue}>{clean(td.flight) || '—'}</Text>
+              </View>
+              <View style={styles.bookingCell}>
+                <Text style={styles.bookingLabel}>Sector / Destination</Text>
+                <Text style={styles.bookingValue}>{sector}</Text>
+              </View>
+              <View style={styles.bookingCell}>
+                <Text style={styles.bookingLabel}>Departure</Text>
+                <Text style={styles.bookingValue}>{fmtStayDate(td.startDate)}</Text>
+              </View>
+              <View style={styles.bookingCellLast}>
+                <Text style={styles.bookingLabel}>Return</Text>
+                <Text style={styles.bookingValue}>{fmtStayDate(td.endDate)}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.bookingCell}>
+                <Text style={styles.bookingLabel}>Hotel Name</Text>
+                <Text style={styles.bookingValue}>{clean(td.hotel) || clean(td.packageName) || '—'}</Text>
+              </View>
+              <View style={styles.bookingCell}>
+                <Text style={styles.bookingLabel}>Hotel City</Text>
+                <Text style={styles.bookingValue}>{hotelCity}</Text>
+              </View>
+              <View style={styles.bookingCell}>
+                <Text style={styles.bookingLabel}>Check-in</Text>
+                <Text style={styles.bookingValue}>{fmtStayDate(td.startDate)}</Text>
+              </View>
+              <View style={styles.bookingCellLast}>
+                <Text style={styles.bookingLabel}>Check-Out</Text>
+                <Text style={styles.bookingValue}>{fmtStayDate(td.endDate)}</Text>
+              </View>
+            </>
+          )}
         </View>
 
         <View style={styles.breakupWrap}>
           <Text style={styles.breakupTitle}>PAYMENT BREAKUP</Text>
           <View style={styles.breakupBox}>
             <View style={styles.breakRow}>
-              <Text style={styles.breakLabel}>
-                *Accommodation Charges* (Inclusive of applicable taxes)
-              </Text>
-              <Text style={styles.breakValue}>{fmt(accommodation, currency)}</Text>
+              <Text style={styles.breakLabel}>{primaryChargeLabel}</Text>
+              <Text style={styles.breakValue}>{fmt(baseCharges, currency)}</Text>
             </View>
             <View style={styles.breakRow}>
               <Text style={styles.breakLabel}>Service Fees</Text>
               <Text style={styles.breakValue}>{fmt(serviceFees, currency)}</Text>
             </View>
             <View style={styles.breakRow}>
-              <Text style={[styles.breakLabel, styles.breakDiscount]}>Hotel funded discount</Text>
+              <Text style={[styles.breakLabel, styles.breakDiscount]}>{discountLabel}</Text>
               <Text style={[styles.breakValue, styles.breakDiscount]}>{fmt(discount, currency)}</Text>
             </View>
             <View style={[styles.breakRow, styles.breakGrand]}>

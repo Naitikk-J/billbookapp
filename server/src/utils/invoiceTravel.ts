@@ -1,6 +1,11 @@
 import type { InvoiceTemplateId } from '../config/invoiceTemplates';
 
+export const BOOKING_TAX_TEMPLATE: InvoiceTemplateId = 'hotel-booking-tax';
+
+export type BookingType = 'hotel' | 'flight';
+
 export interface TravelDetailsInput {
+  bookingType?: BookingType | string;
   packageName?: string;
   destination?: string;
   startDate?: string | Date;
@@ -30,6 +35,34 @@ export interface CustomerTravelContext {
   panNumber?: string;
 }
 
+const GENERAL_TRAVEL_KEYS = [
+  'packageName',
+  'destination',
+  'startDate',
+  'endDate',
+  'adults',
+  'children',
+  'hotel',
+  'flight',
+  'vehicle',
+  'notes',
+] as const;
+
+const BOOKING_TAX_COMMON_KEYS = [
+  'bookingType',
+  'bookingId',
+  'startDate',
+  'endDate',
+  'travellerName',
+  'travellerPan',
+  'panHolderName',
+  'advancedReceiptVoucherNo',
+  'placeOfSupply',
+  'transactionalCategory',
+  'transactionalDetails',
+  'serviceDescription',
+] as const;
+
 function clean(value?: string | null): string {
   return (value ?? '').trim();
 }
@@ -40,30 +73,80 @@ function toDate(value?: string | Date): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
-export function normalizeTravelDetails(
-  template: InvoiceTemplateId,
-  raw: TravelDetailsInput | undefined,
-  customer: CustomerTravelContext
+function pickKeys(
+  source: Record<string, unknown>,
+  keys: readonly string[]
 ): Record<string, unknown> {
-  const td = raw ?? {};
+  const out: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key in source) out[key] = source[key];
+  }
+  return out;
+}
+
+export function inferBookingType(td: TravelDetailsInput | undefined): BookingType {
+  const raw = td ?? {};
+  const explicit = clean(raw.bookingType);
+  if (explicit === 'hotel' || explicit === 'flight') return explicit;
+
+  const hasHotel = Boolean(clean(raw.hotel) || clean(raw.hotelCity));
+  const hasFlight = Boolean(clean(raw.flight));
+  const packageLooksHotel =
+    Boolean(clean(raw.packageName)) && !hasFlight && !/[A-Z]{2}\s*\d+/i.test(clean(raw.packageName));
+
+  if (hasFlight && !hasHotel && !packageLooksHotel) return 'flight';
+  if (hasHotel || packageLooksHotel) return 'hotel';
+  if (hasFlight) return 'flight';
+  return 'hotel';
+}
+
+/** Map generic travel fields into booking-tax fields when switching templates. */
+export function coerceBookingTaxInput(td: TravelDetailsInput): TravelDetailsInput {
+  const bookingType = inferBookingType(td);
+  const out: TravelDetailsInput = { ...td, bookingType };
+
+  if (bookingType === 'hotel') {
+    if (!clean(out.hotel) && clean(out.packageName)) out.hotel = out.packageName;
+    if (!clean(out.hotelCity) && clean(out.destination)) out.hotelCity = out.destination;
+  } else {
+    if (!clean(out.bookingId) && clean(out.packageName)) out.bookingId = out.packageName;
+    if (!clean(out.destination) && clean(out.hotelCity)) out.destination = out.hotelCity;
+  }
+
+  return out;
+}
+
+function buildNormalizedRecord(
+  template: InvoiceTemplateId,
+  td: TravelDetailsInput,
+  customer: CustomerTravelContext,
+  bookingType: BookingType
+): Record<string, unknown> {
   const bookingId = clean(td.bookingId) || clean(td.packageName);
   const hotelCity = clean(td.hotelCity) || clean(td.destination);
   const travellerName = clean(td.travellerName) || clean(customer.name);
   const travellerPan = clean(td.travellerPan) || clean(customer.panNumber);
   const panHolderName = clean(td.panHolderName) || travellerName.toUpperCase();
-  const placeOfSupply =
-    clean(td.placeOfSupply) || clean(customer.state) || '';
+  const placeOfSupply = clean(td.placeOfSupply) || clean(customer.state) || '';
   const transactionalCategory =
-    clean(td.transactionalCategory) ||
-    (clean(customer.gstNumber) ? 'REG/B2B' : 'REG/B2C');
+    clean(td.transactionalCategory) || (clean(customer.gstNumber) ? 'REG/B2B' : 'REG/B2C');
   const transactionalDetails = clean(td.transactionalDetails) || 'RG';
+
+  const defaultHotelService =
+    'Reservation service for accommodation, tour operator and tourist assistance services';
+  const defaultFlightService =
+    'Reservation service for air transport, tour operator and tourist assistance services';
+
   const serviceDescription =
     clean(td.serviceDescription) ||
-    (template === 'hotel-booking-tax'
-      ? 'Reservation service for accommodation, tour operator and tourist assistance services'
+    (template === BOOKING_TAX_TEMPLATE
+      ? bookingType === 'flight'
+        ? defaultFlightService
+        : defaultHotelService
       : '');
 
-  return {
+  const full: Record<string, unknown> = {
+    bookingType,
     packageName: clean(td.packageName),
     destination: clean(td.destination),
     startDate: toDate(td.startDate),
@@ -85,16 +168,50 @@ export function normalizeTravelDetails(
     transactionalDetails,
     serviceDescription,
   };
+
+  if (template === BOOKING_TAX_TEMPLATE) {
+    const keys = [
+      ...BOOKING_TAX_COMMON_KEYS,
+      ...(bookingType === 'flight' ? (['flight', 'destination'] as const) : (['hotel', 'hotelCity'] as const)),
+    ];
+    return pickKeys(full, keys);
+  }
+
+  return pickKeys(full, GENERAL_TRAVEL_KEYS);
+}
+
+export function normalizeTravelDetails(
+  template: InvoiceTemplateId,
+  raw: TravelDetailsInput | undefined,
+  customer: CustomerTravelContext
+): Record<string, unknown> {
+  const input =
+    template === BOOKING_TAX_TEMPLATE ? coerceBookingTaxInput(raw ?? {}) : (raw ?? {});
+  const bookingType = inferBookingType(input);
+  return buildNormalizedRecord(template, input, customer, bookingType);
 }
 
 export function validateTravelForTemplate(
   template: InvoiceTemplateId,
   travel: ReturnType<typeof normalizeTravelDetails>
 ): string | null {
-  if (template !== 'hotel-booking-tax') return null;
+  if (template !== BOOKING_TAX_TEMPLATE) return null;
 
-  if (!clean(travel.hotel as string) && !clean(travel.packageName as string)) {
-    return 'Hotel booking template requires a hotel name or package name.';
+  const bookingType = (travel.bookingType as BookingType) || 'hotel';
+
+  if (bookingType === 'flight') {
+    if (!clean(travel.flight as string)) {
+      return 'Flight booking template requires flight details (airline / route).';
+    }
+    if (!travel.startDate) {
+      return 'Flight booking template requires a departure date.';
+    }
+    return null;
+  }
+
+  const hotelName = clean(travel.hotel as string);
+  if (!hotelName) {
+    return 'Hotel booking template requires a hotel name.';
   }
   if (!travel.startDate) {
     return 'Hotel booking template requires a check-in date.';
