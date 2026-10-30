@@ -304,7 +304,6 @@ export function TaxInvoiceTemplate({
   const afterTax = round2(serviceBase + taxSum);
   const net = invoice.amountPaid > 0 ? invoice.balanceDue : invoice.grandTotal;
 
-  const td = invoice.travelDetails ?? {};
   const packageRef = clean(td.packageName) || clean(td.destination);
   const leadPax = customerName !== '-' ? customerName : '';
 
