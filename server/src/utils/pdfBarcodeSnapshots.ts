@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { join, dirname } from 'node:path';
 import { PNG } from 'pngjs';
 
-const require = createRequire(__filename);
+const nodeRequire = createRequire(__filename);
 
 const MIN_BARCODE_SCORE = 22;
 const MIN_RENDER_SCORE = 18;
@@ -120,13 +120,13 @@ async function loadPdfJs(): Promise<{
   OPS: typeof import('pdfjs-dist/legacy/build/pdf.mjs').OPS;
 }> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const pkgRoot = dirname(require.resolve('pdfjs-dist/package.json'));
+  const pkgRoot = dirname(nodeRequire.resolve('pdfjs-dist/package.json'));
   pdfjs.GlobalWorkerOptions.workerSrc = join(pkgRoot, 'build', 'pdf.worker.min.mjs');
   return pdfjs;
 }
 
 function pdfDocumentOptions(data: Uint8Array) {
-  const pkgRoot = dirname(require.resolve('pdfjs-dist/package.json'));
+  const pkgRoot = dirname(nodeRequire.resolve('pdfjs-dist/package.json'));
   return {
     data,
     disableFontFace: true,
@@ -203,9 +203,9 @@ async function extractRenderedScored(buffer: Buffer): Promise<ScoredUrl[]> {
       const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
       const ctx = canvas.getContext('2d');
       await page.render({
-        canvasContext: ctx as unknown as CanvasRenderingContext2D,
+        canvasContext: ctx,
         viewport,
-      } as Parameters<typeof page.render>[0]).promise;
+      } as never).promise;
 
       const full = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const bands: Array<{ y: number; score: number; h: number }> = [];
