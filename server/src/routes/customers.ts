@@ -14,6 +14,7 @@ const customerSchema = z.object({
   email: z.string().email().or(z.literal('')).optional().default(''),
   phone: z.string().max(40).optional().default(''),
   gstNumber: z.string().max(40).optional().default(''),
+  panNumber: z.string().max(20).optional().default(''),
   address: z.string().max(500).optional().default(''),
   city: z.string().max(120).optional().default(''),
   state: z.string().max(120).optional().default(''),

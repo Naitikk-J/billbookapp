@@ -163,9 +163,9 @@ function splitAmounts(invoice: Invoice) {
   return { accommodation, serviceFees, discount, grand };
 }
 
-function bookingId(invoice: Invoice): string {
+function resolveBookingId(invoice: Invoice): string {
   const td = invoice.travelDetails ?? {};
-  return clean(td.packageName) || clean(invoice.tags?.[0]) || invoice.number;
+  return clean(td.bookingId) || clean(td.packageName) || clean(invoice.tags?.[0]) || invoice.number;
 }
 
 function MetaRow({ label, value }: { label: string; value: string }) {
@@ -204,11 +204,21 @@ export function HotelBookingTaxTemplate({
     .join(', ');
 
   const td = invoice.travelDetails ?? {};
-  const placeOfSupply = clean(customer.state) || clean(company?.state) || '—';
-  const txnCategory = clean(customer.gstNumber) ? 'REG/B2B' : 'REG/B2C';
+  const placeOfSupply =
+    clean(td.placeOfSupply) || clean(customer.state) || clean(company?.state) || '—';
+  const txnCategory =
+    clean(td.transactionalCategory) || (clean(customer.gstNumber) ? 'REG/B2B' : 'REG/B2C');
+  const txnDetails = clean(td.transactionalDetails) || 'RG';
   const sac = clean(invoice.items.find((it) => clean(it.hsnCode))?.hsnCode) || '998552';
   const serviceDesc =
-    clean(invoice.items[0]?.description) || 'Reservation service for accommodation, tour operator and tourist assistance services';
+    clean(td.serviceDescription) ||
+    clean(invoice.items[0]?.description) ||
+    'Reservation service for accommodation, tour operator and tourist assistance services';
+  const travellerName = clean(td.travellerName) || clean(customer.name) || '—';
+  const travellerPan = clean(td.travellerPan) || clean(customer.panNumber);
+  const panHolderName = clean(td.panHolderName) || travellerName.toUpperCase();
+  const voucherNo = clean(td.advancedReceiptVoucherNo);
+  const hotelCity = (clean(td.hotelCity) || clean(td.destination) || clean(customer.city) || '—').toUpperCase();
   const { accommodation, serviceFees, discount, grand } = splitAmounts(invoice);
   const qrUrl = clean(company?.paymentQrUrl);
 
@@ -230,12 +240,12 @@ export function HotelBookingTaxTemplate({
         <View style={styles.metaBox}>
           <View style={styles.metaCols}>
             <View style={styles.metaCol}>
-              <MetaRow label="Booking ID" value={bookingId(invoice)} />
+              <MetaRow label="Booking ID" value={resolveBookingId(invoice)} />
               <MetaRow label="Invoice No." value={invoice.number} />
               <MetaRow label="Date" value={fmtDate(invoice.issueDate)} />
               <MetaRow label="Place of Supply" value={placeOfSupply} />
               <MetaRow label="Transactional Type/Category" value={txnCategory} />
-              <MetaRow label="Transactional Details" value="RG" />
+              <MetaRow label="Transactional Details" value={txnDetails} />
             </View>
             <View style={styles.metaDivider} />
             <View style={styles.metaCol}>
@@ -245,8 +255,8 @@ export function HotelBookingTaxTemplate({
               <MetaRow label="CIN" value={clean(company?.cinNumber)} />
               <MetaRow label="Service Description" value={serviceDesc} />
               <MetaRow label="Tax Payable under RCM" value="No" />
-              {invoice.kind === 'receipt' ? (
-                <MetaRow label="Advanced Receipt Voucher No." value={invoice.number} />
+              {voucherNo ? (
+                <MetaRow label="Advanced Receipt Voucher No." value={voucherNo} />
               ) : null}
             </View>
           </View>
@@ -269,10 +279,11 @@ export function HotelBookingTaxTemplate({
           </View>
           <View style={styles.travellerCol}>
             <Text style={styles.travellerTitle}>Traveller Details</Text>
-            <Text style={styles.line}>Traveller Name: {clean(customer.name) || '—'}</Text>
-            {clean(customer.name) ? (
-              <Text style={styles.line}>PAN Holder's name: {clean(customer.name).toUpperCase()}</Text>
+            <Text style={styles.line}>Traveller Name: {travellerName}</Text>
+            {panHolderName ? (
+              <Text style={styles.line}>PAN Holder's name: {panHolderName}</Text>
             ) : null}
+            {travellerPan ? <Text style={styles.line}>PAN No.: {travellerPan}</Text> : null}
           </View>
         </View>
 
@@ -283,9 +294,7 @@ export function HotelBookingTaxTemplate({
           </View>
           <View style={styles.bookingCell}>
             <Text style={styles.bookingLabel}>Hotel City</Text>
-            <Text style={styles.bookingValue}>
-              {(clean(td.destination) || clean(customer.city) || '—').toUpperCase()}
-            </Text>
+            <Text style={styles.bookingValue}>{hotelCity}</Text>
           </View>
           <View style={styles.bookingCell}>
             <Text style={styles.bookingLabel}>Check-in</Text>

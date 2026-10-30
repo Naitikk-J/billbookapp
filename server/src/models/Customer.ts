@@ -7,6 +7,7 @@ const customerSchema = new Schema(
     email: { type: String, lowercase: true, trim: true, default: '' },
     phone: { type: String, default: '' },
     gstNumber: { type: String, default: '', uppercase: true, trim: true },
+    panNumber: { type: String, default: '', uppercase: true, trim: true },
     address: { type: String, default: '' },
     city: { type: String, default: '' },
     state: { type: String, default: '' },

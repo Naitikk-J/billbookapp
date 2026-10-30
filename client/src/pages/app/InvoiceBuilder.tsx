@@ -70,6 +70,40 @@ interface FormValues {
     hotel: string;
     flight: string;
     vehicle: string;
+    bookingId: string;
+    hotelCity: string;
+    travellerName: string;
+    travellerPan: string;
+    panHolderName: string;
+    advancedReceiptVoucherNo: string;
+    placeOfSupply: string;
+    transactionalCategory: string;
+    transactionalDetails: string;
+    serviceDescription: string;
+  };
+}
+
+function emptyTravel(): FormValues['travel'] {
+  return {
+    packageName: '',
+    destination: '',
+    startDate: '',
+    endDate: '',
+    adults: 0,
+    children: 0,
+    hotel: '',
+    flight: '',
+    vehicle: '',
+    bookingId: '',
+    hotelCity: '',
+    travellerName: '',
+    travellerPan: '',
+    panHolderName: '',
+    advancedReceiptVoucherNo: '',
+    placeOfSupply: '',
+    transactionalCategory: '',
+    transactionalDetails: 'RG',
+    serviceDescription: '',
   };
 }
 
@@ -141,17 +175,7 @@ export default function InvoiceBuilderPage() {
       notes: '',
       terms: '',
       items: [emptyItem()],
-      travel: {
-        packageName: '',
-        destination: '',
-        startDate: '',
-        endDate: '',
-        adults: 0,
-        children: 0,
-        hotel: '',
-        flight: '',
-        vehicle: '',
-      },
+      travel: emptyTravel(),
     },
   });
 
@@ -181,6 +205,7 @@ export default function InvoiceBuilderPage() {
             }))
           : [emptyItem()],
         travel: {
+          ...emptyTravel(),
           packageName: inv.travelDetails?.packageName ?? '',
           destination: inv.travelDetails?.destination ?? '',
           startDate: toInputDate(inv.travelDetails?.startDate ?? null),
@@ -190,6 +215,16 @@ export default function InvoiceBuilderPage() {
           hotel: inv.travelDetails?.hotel ?? '',
           flight: inv.travelDetails?.flight ?? '',
           vehicle: inv.travelDetails?.vehicle ?? '',
+          bookingId: inv.travelDetails?.bookingId ?? '',
+          hotelCity: inv.travelDetails?.hotelCity ?? '',
+          travellerName: inv.travelDetails?.travellerName ?? '',
+          travellerPan: inv.travelDetails?.travellerPan ?? '',
+          panHolderName: inv.travelDetails?.panHolderName ?? '',
+          advancedReceiptVoucherNo: inv.travelDetails?.advancedReceiptVoucherNo ?? '',
+          placeOfSupply: inv.travelDetails?.placeOfSupply ?? '',
+          transactionalCategory: inv.travelDetails?.transactionalCategory ?? '',
+          transactionalDetails: inv.travelDetails?.transactionalDetails ?? 'RG',
+          serviceDescription: inv.travelDetails?.serviceDescription ?? '',
         },
       });
     }
@@ -259,17 +294,7 @@ export default function InvoiceBuilderPage() {
               discountPercent: aiDraft.discountPercent ?? 0,
             }))
           : [emptyItem()],
-        travel: {
-          packageName: '',
-          destination: '',
-          startDate: '',
-          endDate: '',
-          adults: 0,
-          children: 0,
-          hotel: '',
-          flight: '',
-          vehicle: '',
-        },
+        travel: emptyTravel(),
       });
 
       toast.success('AI draft loaded — review the items and save.');
@@ -284,6 +309,7 @@ export default function InvoiceBuilderPage() {
   const taxMode = useWatch({ control: form.control, name: 'taxMode' });
   const currency = useWatch({ control: form.control, name: 'currency' });
   const template = useWatch({ control: form.control, name: 'template' });
+  const isHotelTaxTemplate = template === 'hotel-booking-tax';
 
   const totals = useMemo(
     () => computeTotals(watchedItems ?? [], taxMode ?? 'intra'),
@@ -349,6 +375,16 @@ export default function InvoiceBuilderPage() {
           hotel: values.travel.hotel,
           flight: values.travel.flight,
           vehicle: values.travel.vehicle,
+          bookingId: values.travel.bookingId,
+          hotelCity: values.travel.hotelCity,
+          travellerName: values.travel.travellerName,
+          travellerPan: values.travel.travellerPan,
+          panHolderName: values.travel.panHolderName,
+          advancedReceiptVoucherNo: values.travel.advancedReceiptVoucherNo,
+          placeOfSupply: values.travel.placeOfSupply,
+          transactionalCategory: values.travel.transactionalCategory,
+          transactionalDetails: values.travel.transactionalDetails,
+          serviceDescription: values.travel.serviceDescription,
         },
       };
       const url = id ? `/invoices/${id}` : '/invoices';
@@ -612,51 +648,116 @@ export default function InvoiceBuilderPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-emerald-500" /> Travel details (optional)
+                <Sparkles className="h-4 w-4 text-emerald-500" />
+                {isHotelTaxTemplate ? 'Hotel booking details' : 'Travel details (optional)'}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                For travel packages, tours, and trips — shows up beautifully on the PDF.
+                {isHotelTaxTemplate
+                  ? 'Required for the hotel tax invoice PDF. Company GST/PAN/QR come from Settings.'
+                  : 'For travel packages, tours, and trips — shows up on the PDF.'}
               </p>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-1.5 md:col-span-2">
-                <Label>Package name</Label>
-                <Input placeholder="Bali 7N/8D — Beach package" {...form.register('travel.packageName')} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Destination</Label>
-                <Input placeholder="Bali" {...form.register('travel.destination')} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Start date</Label>
-                <Input type="date" {...form.register('travel.startDate')} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>End date</Label>
-                <Input type="date" {...form.register('travel.endDate')} />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label>Adults</Label>
-                  <Input type="number" {...form.register('travel.adults', { valueAsNumber: true })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Children</Label>
-                  <Input type="number" {...form.register('travel.children', { valueAsNumber: true })} />
-                </div>
-              </div>
-              <div className="space-y-1.5 md:col-span-3">
-                <Label>Hotel</Label>
-                <Input placeholder="Hotel + city" {...form.register('travel.hotel')} />
-              </div>
-              <div className="space-y-1.5 md:col-span-3">
-                <Label>Flight</Label>
-                <Input placeholder="Airline + route" {...form.register('travel.flight')} />
-              </div>
-              <div className="space-y-1.5 md:col-span-3">
-                <Label>Vehicle / transfers</Label>
-                <Input placeholder="SUV / Innova / Tempo" {...form.register('travel.vehicle')} />
-              </div>
+              {isHotelTaxTemplate ? (
+                <>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label>Booking ID</Label>
+                    <Input placeholder="NH74220527700620P2" {...form.register('travel.bookingId')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Advanced receipt voucher no.</Label>
+                    <Input {...form.register('travel.advancedReceiptVoucherNo')} />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label>Hotel name</Label>
+                    <Input placeholder="Ramada Hong Kong Grand View" {...form.register('travel.hotel')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Hotel city</Label>
+                    <Input placeholder="Hong Kong" {...form.register('travel.hotelCity')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Check-in</Label>
+                    <Input type="date" {...form.register('travel.startDate')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Check-out</Label>
+                    <Input type="date" {...form.register('travel.endDate')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Place of supply</Label>
+                    <Input placeholder="Haryana" {...form.register('travel.placeOfSupply')} />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label>Service description</Label>
+                    <Input
+                      placeholder="Reservation service for accommodation…"
+                      {...form.register('travel.serviceDescription')}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Traveller name</Label>
+                    <Input {...form.register('travel.travellerName')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Traveller PAN</Label>
+                    <Input placeholder="DBPPS8741K" {...form.register('travel.travellerPan')} />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label>PAN holder name</Label>
+                    <Input {...form.register('travel.panHolderName')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Txn category</Label>
+                    <Input placeholder="REG/B2C" {...form.register('travel.transactionalCategory')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Txn details</Label>
+                    <Input {...form.register('travel.transactionalDetails')} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label>Package name</Label>
+                    <Input placeholder="Bali 7N/8D — Beach package" {...form.register('travel.packageName')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Destination</Label>
+                    <Input placeholder="Bali" {...form.register('travel.destination')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Start date</Label>
+                    <Input type="date" {...form.register('travel.startDate')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>End date</Label>
+                    <Input type="date" {...form.register('travel.endDate')} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <Label>Adults</Label>
+                      <Input type="number" {...form.register('travel.adults', { valueAsNumber: true })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Children</Label>
+                      <Input type="number" {...form.register('travel.children', { valueAsNumber: true })} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 md:col-span-3">
+                    <Label>Hotel</Label>
+                    <Input placeholder="Hotel + city" {...form.register('travel.hotel')} />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-3">
+                    <Label>Flight</Label>
+                    <Input placeholder="Airline + route" {...form.register('travel.flight')} />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-3">
+                    <Label>Vehicle / transfers</Label>
+                    <Input placeholder="SUV / Innova / Tempo" {...form.register('travel.vehicle')} />
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 

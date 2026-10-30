@@ -8,6 +8,8 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { computeTotals } from '../utils/totals';
+import { INVOICE_TEMPLATES, normalizeTemplateId, type InvoiceTemplateId } from '../config/invoiceTemplates';
+import { normalizeTravelDetails, validateTravelForTemplate } from '../utils/invoiceTravel';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -34,6 +36,16 @@ const travelSchema = z
     flight: z.string().max(500).optional().default(''),
     vehicle: z.string().max(500).optional().default(''),
     notes: z.string().max(2000).optional().default(''),
+    bookingId: z.string().max(120).optional().default(''),
+    hotelCity: z.string().max(200).optional().default(''),
+    travellerName: z.string().max(200).optional().default(''),
+    travellerPan: z.string().max(20).optional().default(''),
+    panHolderName: z.string().max(200).optional().default(''),
+    advancedReceiptVoucherNo: z.string().max(120).optional().default(''),
+    placeOfSupply: z.string().max(120).optional().default(''),
+    transactionalCategory: z.string().max(40).optional().default(''),
+    transactionalDetails: z.string().max(40).optional().default(''),
+    serviceDescription: z.string().max(500).optional().default(''),
   })
   .partial()
   .optional();
@@ -55,6 +67,37 @@ const invoiceSchema = z.object({
   tags: z.array(z.string().max(40)).max(20).optional().default([]),
 });
 
+function resolveTemplateId(raw?: string): InvoiceTemplateId {
+  const id = normalizeTemplateId(raw ?? 'modern');
+  if (!id) throw ApiError.badRequest(`Unknown invoice template: ${raw ?? ''}`);
+  return id;
+}
+
+function customerTravelContext(customer: {
+  name: string;
+  state?: string;
+  gstNumber?: string;
+  panNumber?: string;
+}) {
+  return {
+    name: customer.name,
+    state: customer.state,
+    gstNumber: customer.gstNumber,
+    panNumber: customer.panNumber,
+  };
+}
+
+function prepareTravel(
+  templateId: InvoiceTemplateId,
+  travelInput: z.infer<typeof travelSchema> | undefined,
+  customer: { name: string; state?: string; gstNumber?: string; panNumber?: string }
+) {
+  const travelDetails = normalizeTravelDetails(templateId, travelInput ?? {}, customerTravelContext(customer));
+  const travelError = validateTravelForTemplate(templateId, travelDetails);
+  if (travelError) throw ApiError.badRequest(travelError);
+  return travelDetails;
+}
+
 async function nextNumber(
   companyId: string,
   kind: 'invoice' | 'quote' | 'proforma' | 'receipt'
@@ -74,6 +117,13 @@ async function nextNumber(
   const padded = String(counter - 1).padStart(5, '0');
   return `${prefix}${padded}`;
 }
+
+router.get(
+  '/templates',
+  asyncHandler(async (_req, res) => {
+    res.json({ templates: INVOICE_TEMPLATES });
+  })
+);
 
 router.get(
   '/stats',
@@ -185,6 +235,8 @@ router.post(
 
     const totals = computeTotals(body.items, body.taxMode);
     const number = body.number ?? (await nextNumber(companyId, body.kind));
+    const templateId = resolveTemplateId(body.template);
+    const travelDetails = prepareTravel(templateId, body.travelDetails, customer);
 
     const invoice = await Invoice.create({
       companyId,
@@ -194,12 +246,13 @@ router.post(
       issueDate: body.issueDate ? new Date(body.issueDate) : new Date(),
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
       currency: body.currency,
-      template: body.template,
+      template: templateId,
       customerSnapshot: {
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
         gstNumber: customer.gstNumber,
+        panNumber: customer.panNumber,
         address: customer.address,
         city: customer.city,
         state: customer.state,
@@ -207,7 +260,7 @@ router.post(
         postalCode: customer.postalCode,
       },
       items: totals.items,
-      travelDetails: body.travelDetails ?? {},
+      travelDetails,
       notes: body.notes,
       terms: body.terms,
       taxMode: body.taxMode,
@@ -265,10 +318,30 @@ router.patch(
       'kind',
     ];
     for (const key of assignable) {
+      if (key === 'template' || key === 'travelDetails') continue;
       if (body[key] !== undefined) {
         (existing as unknown as Record<string, unknown>)[key as string] = body[key];
       }
     }
+
+    const templateId = resolveTemplateId(body.template ?? existing.template);
+    existing.template = templateId;
+
+    if (body.travelDetails !== undefined || body.template !== undefined) {
+      const customer = await Customer.findOne({
+        _id: existing.customerId,
+        companyId: req.user!.companyId,
+      });
+      if (!customer) throw ApiError.notFound('Customer not found');
+      const travelInput =
+        body.travelDetails !== undefined
+          ? body.travelDetails
+          : (JSON.parse(JSON.stringify(existing.travelDetails ?? {})) as z.infer<
+              typeof travelSchema
+            >);
+      existing.set('travelDetails', prepareTravel(templateId, travelInput, customer));
+    }
+
     if (body.issueDate) existing.issueDate = new Date(body.issueDate);
     if (body.dueDate) existing.dueDate = new Date(body.dueDate);
 

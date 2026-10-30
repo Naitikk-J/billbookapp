@@ -36,6 +36,7 @@ const schema = z.object({
   email: z.string().email().or(z.literal('')).optional().default(''),
   phone: z.string().optional().default(''),
   gstNumber: z.string().optional().default(''),
+  panNumber: z.string().optional().default(''),
   address: z.string().optional().default(''),
   city: z.string().optional().default(''),
   state: z.string().optional().default(''),
@@ -233,6 +234,7 @@ function CustomerDialog({
       email: initial?.email ?? '',
       phone: initial?.phone ?? '',
       gstNumber: initial?.gstNumber ?? '',
+      panNumber: initial?.panNumber ?? '',
       address: initial?.address ?? '',
       city: initial?.city ?? '',
       state: initial?.state ?? '',
@@ -262,6 +264,9 @@ function CustomerDialog({
             </Field>
             <Field label="GST number" error={form.formState.errors.gstNumber?.message}>
               <Input placeholder="29ABCDE1234F1Z5" {...form.register('gstNumber')} />
+            </Field>
+            <Field label="PAN" error={form.formState.errors.panNumber?.message}>
+              <Input placeholder="ABCDE1234F" {...form.register('panNumber')} />
             </Field>
             <Field label="Email" error={form.formState.errors.email?.message}>
               <Input type="email" placeholder="finance@apex.com" {...form.register('email')} />

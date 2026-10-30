@@ -55,6 +55,7 @@ export interface Customer {
   email?: string;
   phone?: string;
   gstNumber?: string;
+  panNumber?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -139,6 +140,7 @@ export interface CustomerSnapshot {
   email?: string;
   phone?: string;
   gstNumber?: string;
+  panNumber?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -157,6 +159,16 @@ export interface TravelDetails {
   flight?: string;
   vehicle?: string;
   notes?: string;
+  bookingId?: string;
+  hotelCity?: string;
+  travellerName?: string;
+  travellerPan?: string;
+  panHolderName?: string;
+  advancedReceiptVoucherNo?: string;
+  placeOfSupply?: string;
+  transactionalCategory?: string;
+  transactionalDetails?: string;
+  serviceDescription?: string;
 }
 
 export interface Payment {
