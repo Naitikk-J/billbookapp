@@ -27,6 +27,7 @@ export interface TravelDetailsInput {
   transactionalDetails?: string;
   serviceDescription?: string;
   flightSegments?: unknown[];
+  barcodeSnapshots?: unknown[];
 }
 
 export interface CustomerTravelContext {
@@ -130,6 +131,9 @@ function buildNormalizedRecord(
     transactionalDetails,
     serviceDescription,
     flightSegments: Array.isArray(td.flightSegments) ? td.flightSegments : [],
+    barcodeSnapshots: Array.isArray(td.barcodeSnapshots)
+      ? td.barcodeSnapshots.filter((s): s is string => typeof s === 'string' && s.length > 0).slice(0, 8)
+      : [],
   };
 }
 

@@ -173,6 +173,8 @@ export interface FlightInvoiceDraft {
   }>;
   notes: string;
   sourceFileName: string;
+  /** PNG data URLs sliced from the uploaded ticket PDF */
+  barcodeSnapshots?: string[];
   segments: Array<{
     pnr: string;
     flightNumber: string;
@@ -221,6 +223,7 @@ export interface TravelDetails {
     arrivalAt?: string | null;
     passengers?: Array<{ name: string; seat?: string; cabin?: string }>;
   }>;
+  barcodeSnapshots?: string[];
 }
 
 export interface Payment {

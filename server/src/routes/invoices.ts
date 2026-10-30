@@ -61,6 +61,7 @@ const travelSchema = z
     transactionalDetails: z.string().max(40).optional().default(''),
     serviceDescription: z.string().max(500).optional().default(''),
     flightSegments: z.array(z.record(z.unknown())).max(20).optional().default([]),
+    barcodeSnapshots: z.array(z.string().max(600_000)).max(8).optional().default([]),
   })
   .partial()
   .optional();

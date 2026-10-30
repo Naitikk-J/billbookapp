@@ -236,25 +236,41 @@ export function SafarmateFlightVoucherTemplate({
   const passenger =
     clean(td.travellerName) || clean(invoice.customerSnapshot?.name) || 'Passenger';
   const segments = useMemo(() => segmentsFromInvoice(invoice), [invoice]);
+  const snapshots = useMemo(
+    () => (Array.isArray(td.barcodeSnapshots) ? td.barcodeSnapshots.filter(Boolean) : []),
+    [td.barcodeSnapshots]
+  );
+
+  const { pnrSnapshot, sectorSnapshots } = useMemo(() => {
+    if (snapshots.length === 0) {
+      return { pnrSnapshot: null as string | null, sectorSnapshots: [] as string[] };
+    }
+    if (snapshots.length > segments.length && segments.length > 0) {
+      return { pnrSnapshot: snapshots[0], sectorSnapshots: snapshots.slice(1) };
+    }
+    return { pnrSnapshot: snapshots.length === 1 ? snapshots[0] : null, sectorSnapshots: snapshots };
+  }, [snapshots, segments.length]);
 
   const sectorBarcodes = useMemo(() => {
     return segments.map((seg, idx) => {
       const from = clean(seg.fromAirport) || clean(seg.fromCity);
       const to = clean(seg.toAirport) || clean(seg.toCity);
       const payload = sectorBarcodeValue(pnr !== '—' ? pnr : bookingId, from, to);
+      const snapshotSrc = sectorSnapshots[idx] ?? null;
       return {
         key: `${from}-${to}-${idx}`,
         sectorLabel: from && to ? `${from}-${to}` : sectorCode(seg),
         payload,
-        src: barcodeDataUrl(payload, { height: 34, lineWidth: 1.05 }),
+        src: snapshotSrc ?? barcodeDataUrl(payload, { height: 34, lineWidth: 1.05 }),
+        fromOriginal: Boolean(snapshotSrc),
       };
     });
-  }, [segments, pnr, bookingId]);
+  }, [segments, pnr, bookingId, sectorSnapshots]);
 
-  const pnrBarcodeSrc = useMemo(
-    () => barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 }),
-    [pnr, bookingId]
-  );
+  const pnrBarcodeSrc = useMemo(() => {
+    if (pnrSnapshot) return pnrSnapshot;
+    return barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 });
+  }, [pnrSnapshot, pnr, bookingId]);
 
   return (
     <Document>

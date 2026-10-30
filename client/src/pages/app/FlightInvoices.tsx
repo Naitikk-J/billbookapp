@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/cn';
 import { matchCustomerId } from '@/lib/matchCustomer';
+import { extractBarcodeSnapshotsFromPdf } from '@/lib/pdfBarcodeSnapshots';
 import { FlightPdfPreview } from '@/components/FlightPdfPreview';
 
 function draftToPreviewInvoice(
@@ -73,7 +74,11 @@ function draftToPreviewInvoice(
         amount: Math.round((taxable + tax + Number.EPSILON) * 100) / 100,
       };
     }),
-    travelDetails: { ...draft.travelDetails, flightSegments: draft.segments },
+    travelDetails: {
+      ...draft.travelDetails,
+      flightSegments: draft.segments,
+      barcodeSnapshots: draft.barcodeSnapshots ?? [],
+    },
     notes: draft.notes,
     terms: '',
     subtotal: totals.subtotal,
@@ -121,15 +126,18 @@ export default function FlightInvoicesPage() {
   const parsePdf = useMutation({
     mutationFn: async (f: File) => {
       const base64 = await fileToBase64(f);
-      const res = await api.post<{
-        draft: FlightInvoiceDraft;
-        extraction?: { format: string; rawTextLength: number };
-      }>('/flight-invoices/parse-pdf', {
-        fileName: f.name,
-        mimeType: f.type || 'application/pdf',
-        base64,
-      });
-      return res.data;
+      const [res, barcodeSnapshots] = await Promise.all([
+        api.post<{
+          draft: FlightInvoiceDraft;
+          extraction?: { format: string; rawTextLength: number };
+        }>('/flight-invoices/parse-pdf', {
+          fileName: f.name,
+          mimeType: f.type || 'application/pdf',
+          base64,
+        }),
+        extractBarcodeSnapshotsFromPdf(f).catch(() => [] as string[]),
+      ]);
+      return { ...res.data, barcodeSnapshots };
     },
     onSuccess: (data) => {
       const customers =
@@ -156,10 +164,18 @@ export default function FlightInvoicesPage() {
             },
           }
         : data.draft;
-      setDraft(draft);
+      setDraft({
+        ...draft,
+        barcodeSnapshots: data.barcodeSnapshots?.length ? data.barcodeSnapshots : draft.barcodeSnapshots,
+      });
       setCustomerId(matched ?? '');
       const fmt = data.extraction?.format?.replace(/_/g, ' ') ?? 'PDF';
-      toast.success(`Extracted (${fmt}) — check preview and save to share.`);
+      const bc = data.barcodeSnapshots?.length ?? 0;
+      toast.success(
+        bc > 0
+          ? `Extracted (${fmt}) with ${bc} original barcode${bc > 1 ? 's' : ''} from ticket.`
+          : `Extracted (${fmt}) — check preview and save to share.`
+      );
     },
     onError: (err) => toast.error(apiError(err)),
   });
@@ -197,6 +213,7 @@ export default function FlightInvoicesPage() {
             ? new Date(draft.travelDetails.endDate).toISOString()
             : undefined,
           flightSegments: draft.segments,
+          barcodeSnapshots: draft.barcodeSnapshots ?? [],
         },
       });
       return res.data.invoice;
