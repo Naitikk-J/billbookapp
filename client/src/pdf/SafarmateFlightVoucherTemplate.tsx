@@ -151,13 +151,35 @@ function pickLongestName(...candidates: Array<string | undefined | null>): strin
     .sort((a, b) => b.length - a.length)[0] ?? '';
 }
 
+function uniquePassengerNames(...sources: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of sources) {
+    const name = clean(s);
+    if (!name) continue;
+    for (const part of name.split(/\s*&\s*/)) {
+      const p = clean(part);
+      if (!p) continue;
+      const key = p.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+  }
+  return out;
+}
+
 function passengerDisplayName(invoice: Invoice, segments: SegmentRow[]): string {
   const td = invoice.travelDetails ?? {};
   const fromSegments = segments.flatMap((s) => (s.passengers ?? []).map((p) => p.name));
-  return (
-    pickLongestName(td.travellerName, invoice.customerSnapshot?.name, ...fromSegments) ||
-    'Passenger'
+  const names = uniquePassengerNames(
+    td.travellerName,
+    invoice.customerSnapshot?.name,
+    ...fromSegments
   );
+  if (names.length > 1) return names.join(' & ');
+  if (names.length === 1) return names[0]!;
+  return pickLongestName(td.travellerName, invoice.customerSnapshot?.name, ...fromSegments) || 'Passenger';
 }
 
 type SegmentRow = {

@@ -141,7 +141,11 @@ function splitSmushedCapsName(raw: string): string {
 }
 
 function humanizePassenger(raw: string): string {
-  const s = cleanPdfWhitespace(raw.replace(/\(ADT\)|\(CHD\)|\(INF\)/gi, ''));
+  const s = cleanPdfWhitespace(
+    raw
+      .replace(/\(ADT\)|\(CHD\)|\(INF\)/gi, '')
+      .replace(/\s*(?:Adult|Child|Infant)\b.*$/i, '')
+  );
   if (!s) return '';
   if (/^[a-z]+$/.test(s)) return dedupeRepeatedNameToken(s.charAt(0).toUpperCase() + s.slice(1));
   if (/^[A-Z]+$/.test(s) && s.length > 8) {
@@ -188,8 +192,62 @@ function pickLongestPassengerName(...candidates: Array<string | undefined | null
   return pool.sort((a, b) => b.length - a.length)[0] ?? '';
 }
 
+function isValidIndigoPnr(code: string): boolean {
+  const c = code.toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(c)) return false;
+  return /\d/.test(c);
+}
+
+function extractIndigoPnr(raw: string, flat: string): string {
+  const hay = `${raw}\n${flat}`;
+  const patterns = [
+    /PNR\s*\/\s*Booking Ref(?:erence)?\s*:?\s*([A-Z0-9]{6})/i,
+    /Booking Ref(?:erence)([A-Z0-9]{6})/i,
+    /PNR\/Booking Reference\s*([A-Z0-9]{6})/i,
+  ];
+  for (const re of patterns) {
+    const m = hay.match(re);
+    if (m?.[1] && isValidIndigoPnr(m[1])) return m[1].toUpperCase();
+  }
+  return '';
+}
+
+function parseIndigoDateTimes(block: string): Array<{ time: string; date: string }> {
+  const out: Array<{ time: string; date: string }> = [];
+  const re = /(\d{1,2}:\d{2}),?\s*(?:hrs,?\s*)?(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(block)) !== null) {
+    out.push({ time: m[1], date: m[2] });
+  }
+  return out;
+}
+
+function parseIndigoPassengerNames(raw: string, fileName?: string): string[] {
+  const names: string[] = [];
+  const headerRe =
+    /Passenger Information\s*(MS|MR|Mrs|Ms|Mstr|Miss)\.?\s+([A-Za-z]+(?:\s+[A-Za-z]+){0,12})\s*(?:Adult|Child|Infant)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = headerRe.exec(raw)) !== null) {
+    const full = humanizePassenger(`${m[1]} ${m[2]}`);
+    if (isPlausiblePassengerName(full)) names.push(full);
+  }
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const n of names) {
+    const key = n.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(n);
+  }
+  if (unique.length > 0) return unique;
+
+  const legacy = parseIndigoPassengerNameLegacy(raw, fileName);
+  return legacy ? [legacy] : [];
+}
+
 /** IndiGo itinerary PDFs often repeat the pax name (PDF text quirk) before "Adult". */
-function parseIndigoPassengerName(raw: string, fileName?: string): string {
+function parseIndigoPassengerNameLegacy(raw: string, fileName?: string): string {
   const block = raw.match(/Passenger Information([\s\S]{0,450})/i)?.[1] ?? '';
 
   const smushedBeforeAdult = block.match(/\b([a-z]{3,15})\1+(?:\s*\1+)*\s*(?:Adult|Child|Infant)/i);
@@ -222,6 +280,63 @@ function parseIndigoPassengerName(raw: string, fileName?: string): string {
     fromSection,
     passengerNameFromFileName(fileName)
   );
+}
+
+function indigoItinerarySampleBlock(raw: string): string {
+  const parts = raw.split(/Passenger Information/i);
+  if (parts.length < 2) return raw;
+  return parts[1]!.split(/Passenger Information|\nNote\n/i)[0] ?? parts[1]!;
+}
+
+function parseIndigoSegments(
+  raw: string,
+  pnr: string,
+  passengerNames: string[]
+): NormalisedFlight[] {
+  const block = indigoItinerarySampleBlock(raw);
+  const sectorMatches = [...block.matchAll(/\b([A-Z]{3})-([A-Z]{3})\b/g)];
+  const legs: Array<{ from: string; to: string }> = [];
+  for (const m of sectorMatches) {
+    const from = m[1]!;
+    const to = m[2]!;
+    const key = `${from}-${to}`;
+    if (!legs.some((l) => `${l.from}-${l.to}` === key)) legs.push({ from, to });
+  }
+
+  const flightMatches = [...block.matchAll(/\b6E\s*(\d{3,4})\b/gi)];
+  const flights: string[] = [];
+  for (const m of flightMatches) {
+    const fn = `6E ${m[1]}`;
+    if (!flights.includes(fn)) flights.push(fn);
+  }
+
+  const times = parseIndigoDateTimes(block);
+  const pax = passengerNames.map((name) => ({ name, seat: '', cabin: '' }));
+
+  const segments: NormalisedFlight[] = [];
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i]!;
+    const dep = times[i * 2];
+    const arr = times[i * 2 + 1];
+    segments.push(
+      normaliseFlight({
+        pnr,
+        airline: 'IndiGo',
+        airlineCode: '6E',
+        flightNumber: flights[i] ?? flights[0] ?? '',
+        fromAirport: leg.from,
+        toAirport: leg.to,
+        fromCity: cityForIata(leg.from),
+        toCity: cityForIata(leg.to),
+        departureAt: dep ? parseLongDate(dep.date, dep.time) : '',
+        arrivalAt: arr ? parseLongDate(arr.date, arr.time) : '',
+        passengers: pax.length > 0 ? pax : [],
+        status: 'confirmed',
+      })
+    );
+  }
+
+  return dedupeFlightSegments(segments);
 }
 
 function parseAirIndiaPassengerName(flat: string, raw: string, fileName?: string): string {
@@ -359,39 +474,45 @@ function parseAirIndia(flat: string, raw: string, fileName?: string): FlightPdfE
 
 function parseIndigo(flat: string, raw: string, fileName?: string): FlightPdfExtraction {
   const charges = emptyFlightBillCharges();
-  const pnr =
-    (flat.match(/PNR\/Booking Reference\s*([A-Z0-9]{6})/i)?.[1] ??
-      raw.match(/PNR\/Booking Reference\s*([A-Z0-9]{6})/i)?.[1])?.toUpperCase() ?? '';
+  const pnr = extractIndigoPnr(raw, flat);
   charges.pnr = pnr;
   charges.bookingId = pnr;
 
-  charges.billToName = parseIndigoPassengerName(raw, fileName);
+  const passengerNames = parseIndigoPassengerNames(raw, fileName);
+  charges.billToName =
+    passengerNames.length > 1
+      ? passengerNames.join(' & ')
+      : passengerNames[0] ?? '';
 
-  const sector = flat.match(/\b([A-Z]{3})-([A-Z]{3})\b/);
-  const flight = flat.match(/\b(6E)\s*(\d{3,4})\b/i);
-  const times = [...raw.matchAll(/(\d{1,2}:\d{2})\s*hrs,\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/gi)];
+  let segments = parseIndigoSegments(raw, pnr, passengerNames);
 
-  const segments: NormalisedFlight[] = [];
-  if (sector && flight) {
-    const depIso = times[0] ? parseLongDate(times[0][2], times[0][1]) : '';
-    const arrIso = times[1] ? parseLongDate(times[1][2], times[1][1]) : '';
-
-    segments.push(
-      normaliseFlight({
-        pnr,
-        airline: 'IndiGo',
-        airlineCode: '6E',
-        flightNumber: `${flight[1].toUpperCase()} ${flight[2]}`,
-        fromAirport: sector[1],
-        toAirport: sector[2],
-        fromCity: cityForIata(sector[1]),
-        toCity: cityForIata(sector[2]),
-        departureAt: depIso,
-        arrivalAt: arrIso,
-        passengers: charges.billToName ? [{ name: charges.billToName, seat: '', cabin: '' }] : [],
-        status: 'confirmed',
-      })
-    );
+  if (segments.length === 0) {
+    const sector = flat.match(/\b([A-Z]{3})-([A-Z]{3})\b/);
+    const flight = flat.match(/\b(6E)\s*(\d{3,4})\b/i);
+    const times = [
+      ...raw.matchAll(/(\d{1,2}:\d{2}),?\s*(?:hrs,?\s*)?(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/gi),
+    ];
+    if (sector && flight) {
+      const depIso = times[0] ? parseLongDate(times[0][2], times[0][1]) : '';
+      const arrIso = times[1] ? parseLongDate(times[1][2], times[1][1]) : '';
+      const pax = passengerNames.map((name) => ({ name, seat: '', cabin: '' }));
+      segments = [
+        normaliseFlight({
+          pnr,
+          airline: 'IndiGo',
+          airlineCode: '6E',
+          flightNumber: `${flight[1]!.toUpperCase()} ${flight[2]}`,
+          fromAirport: sector[1]!,
+          toAirport: sector[2]!,
+          fromCity: cityForIata(sector[1]!),
+          toCity: cityForIata(sector[2]!),
+          departureAt: depIso,
+          arrivalAt: arrIso,
+          passengers: pax,
+          status: 'confirmed',
+        }),
+      ];
+    }
   }
 
   return { format: 'indigo_itinerary', segments, charges, rawTextLength: flat.length };
