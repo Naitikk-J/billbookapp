@@ -1,4 +1,16 @@
+import type { FlightInvoiceDraft } from '../../server/src/utils/flightInvoiceDraft.js';
+
 export type Flow = 'idle' | 'new_bill' | 'existing_bill';
+
+/** One PDF = one passenger ticket under the same PNR. */
+export type ExistingBillMode = 'single' | 'group_pnr';
+
+export interface QueuedGroupTicket {
+  fileName: string;
+  draft: FlightInvoiceDraft;
+  extractionFormat: string;
+  barcodeCount: number;
+}
 
 export type NewBillStep =
   | 'template'
@@ -27,6 +39,9 @@ export interface ChatSession {
   flow: Flow;
   step?: NewBillStep;
   newBill?: Partial<NewBillDraft>;
+  existingBillMode?: ExistingBillMode;
+  groupTickets?: QueuedGroupTicket[];
+  groupPnr?: string;
 }
 
 const sessions = new Map<number, ChatSession>();

@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { Document, Image, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Company, Invoice, TravelDetails } from '@/lib/types';
 import { expandIndianState, formatAirportLine, formatSectorLabel } from '@/lib/airportNames';
-import { barcodeDataUrl, sectorBarcodeValue } from './barcodeDataUrl';
 import { fmtDate, safarmateLogoUrl } from './shared';
+import { barcodeImageSrc } from './barcodeImageSrc';
+import { barcodeDataUrl, sectorBarcodeValue } from './barcodeDataUrl';
 
 const INK = '#1a1a1a';
 const MUTED = '#555555';
@@ -191,25 +192,36 @@ type SegmentRow = {
   passengers?: Array<{ name: string; cabin?: string }>;
 };
 
+/** Ticket times are stored as wall-clock ISO (Z is not a timezone shift). */
+function wallClock(value?: string | null): Date | null {
+  if (!value) return null;
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+}
+
 function fmtLegDate(value?: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-IN', {
+  const d = wallClock(value);
+  if (!d) return '—';
+  return d.toLocaleDateString('en-IN', {
     weekday: 'short',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
   });
 }
 
 function fmtLegTime(value?: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  const d = wallClock(value);
+  if (!d) return '—';
+  return d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
 
 function sectorHeading(seg: SegmentRow): string {
@@ -270,6 +282,12 @@ export function SafarmateFlightVoucherTemplate({
   const pnr = clean(td.bookingId) || segments[0]?.pnr || '—';
   const bookingId = clean(td.bookingId) || pnr;
   const passenger = passengerDisplayName(invoice, segments);
+  const passengers = useMemo(() => {
+    const td = invoice.travelDetails ?? {};
+    const fromSeg = segments.flatMap((s) => (s.passengers ?? []).map((p) => p.name));
+    const list = uniquePassengerNames(td.travellerName, invoice.customerSnapshot?.name, ...fromSeg);
+    return list.length > 0 ? list : [passenger];
+  }, [invoice, segments, passenger]);
   const snapshots = useMemo(
     () => (Array.isArray(td.barcodeSnapshots) ? td.barcodeSnapshots.filter(Boolean) : []),
     [td.barcodeSnapshots]
@@ -279,32 +297,55 @@ export function SafarmateFlightVoucherTemplate({
     if (snapshots.length === 0) {
       return { pnrSnapshot: null as string | null, sectorSnapshots: [] as string[] };
     }
-    if (snapshots.length > segments.length && segments.length > 0) {
-      return { pnrSnapshot: snapshots[0], sectorSnapshots: snapshots.slice(1) };
+    const segCount = segments.length;
+    if (segCount > 1 && snapshots.length >= segCount) {
+      return {
+        pnrSnapshot: snapshots[0] ?? null,
+        sectorSnapshots: snapshots.slice(1, 1 + segCount),
+      };
     }
-    return { pnrSnapshot: snapshots.length === 1 ? snapshots[0] : null, sectorSnapshots: snapshots };
+    return {
+      pnrSnapshot: snapshots[0] ?? null,
+      sectorSnapshots: snapshots.length > 1 ? snapshots.slice(1) : snapshots,
+    };
   }, [snapshots, segments.length]);
 
-  const sectorBarcodes = useMemo(() => {
-    return segments.map((seg, idx) => {
-      const from = clean(seg.fromAirport) || clean(seg.fromCity);
-      const to = clean(seg.toAirport) || clean(seg.toCity);
-      const payload = sectorBarcodeValue(pnr !== '—' ? pnr : bookingId, from, to);
-      const snapshotSrc = sectorSnapshots[idx] ?? null;
-      return {
-        key: `${from}-${to}-${idx}`,
-        sectorLabel: sectorHeading(seg),
-        payload,
-        src: snapshotSrc ?? barcodeDataUrl(payload, { height: 34, lineWidth: 1.05 }),
-        fromOriginal: Boolean(snapshotSrc),
-      };
-    });
-  }, [segments, pnr, bookingId, sectorSnapshots]);
+  const travellerRows = useMemo(() => {
+    const paxList = passengers;
+    const segCount = Math.max(segments.length, 1);
+    const perPaxBarcodes = snapshots.length === paxList.length;
+    const perSegBarcodes =
+      !perPaxBarcodes && snapshots.length >= segCount && paxList.length === 1;
 
-  const pnrBarcodeSrc = useMemo(() => {
-    if (pnrSnapshot) return pnrSnapshot;
-    return barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 });
-  }, [pnrSnapshot, pnr, bookingId]);
+    return paxList.flatMap((paxName, pi) =>
+      segments.map((seg, si) => {
+        let src: string | null = null;
+        if (perPaxBarcodes) src = snapshots[pi] ?? null;
+        else if (perSegBarcodes) src = sectorSnapshots[si] ?? snapshots[si] ?? null;
+        else if (paxList.length === 1 && segCount > 1) {
+          src = sectorSnapshots[si] ?? snapshots[si + 1] ?? snapshots[si] ?? null;
+        } else {
+          src = snapshots[pi] ?? sectorSnapshots[si] ?? snapshots[si] ?? null;
+        }
+
+        const generated = barcodeDataUrl(
+          sectorBarcodeValue(pnr !== '—' ? pnr : bookingId, seg.fromAirport ?? '', seg.toAirport ?? ''),
+          { height: 34, lineWidth: 1 }
+        );
+        return {
+          key: `${pi}-${si}-${sectorHeading(seg)}`,
+          paxName,
+          sectorLabel: sectorHeading(seg),
+          src: src || generated,
+        };
+      })
+    );
+  }, [passengers, segments, snapshots, sectorSnapshots, pnr, bookingId]);
+
+  const pnrBarcodeSrc = useMemo(
+    () => pnrSnapshot || barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 }),
+    [pnrSnapshot, pnr, bookingId]
+  );
 
   return (
     <Document>
@@ -337,7 +378,12 @@ export function SafarmateFlightVoucherTemplate({
         <View style={styles.passengerBox}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.passengerName}>1. {passenger}</Text>
+              {passengers.map((name, idx) => (
+                <Text key={`${name}-${idx}`} style={styles.passengerName}>
+                  {passengers.length > 1 ? `${idx + 1}. ` : '1. '}
+                  {name}
+                </Text>
+              ))}
               {invoice.number && invoice.number !== 'DRAFT' ? (
                 <Text style={{ fontSize: 8, color: MUTED, marginTop: 4 }}>
                   Voucher ref: {invoice.number}
@@ -347,7 +393,7 @@ export function SafarmateFlightVoucherTemplate({
             {pnrBarcodeSrc ? (
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={{ fontSize: 7, color: MUTED, marginBottom: 2 }}>PNR barcode</Text>
-                <Image src={pnrBarcodeSrc} style={{ width: 100, height: 26, objectFit: 'contain' }} />
+                <Image src={barcodeImageSrc(pnrBarcodeSrc)} style={{ width: 100, height: 26, objectFit: 'contain' }} />
               </View>
             ) : null}
           </View>
@@ -390,7 +436,7 @@ export function SafarmateFlightVoucherTemplate({
           </View>
         ))}
 
-        {sectorBarcodes.length > 0 ? (
+        {travellerRows.length > 0 ? (
           <>
             <Text style={styles.sectionTitle}>Traveller details</Text>
             <View style={styles.travellerSection}>
@@ -399,17 +445,17 @@ export function SafarmateFlightVoucherTemplate({
                 <Text style={styles.travellerHeadCell}>Segment</Text>
                 <Text style={styles.travellerHeadBarcode}>Barcode</Text>
               </View>
-              {sectorBarcodes.map((row, idx) => (
+              {travellerRows.map((row, idx) => (
                 <View
                   key={row.key}
                   style={
-                    idx === sectorBarcodes.length - 1 ? styles.travellerRowLast : styles.travellerRow
+                    idx === travellerRows.length - 1 ? styles.travellerRowLast : styles.travellerRow
                   }
                 >
-                  <Text style={styles.travellerNameCol}>{passenger}</Text>
+                  <Text style={styles.travellerNameCol}>{row.paxName}</Text>
                   <Text style={styles.travellerSectorCol}>{row.sectorLabel}</Text>
                   {row.src ? (
-                    <Image src={row.src} style={styles.barcodeImg} />
+                    <Image src={barcodeImageSrc(row.src)} style={styles.barcodeImg} />
                   ) : (
                     <View style={styles.barcodePlaceholder} />
                   )}

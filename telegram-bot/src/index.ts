@@ -1,25 +1,26 @@
 import { Telegraf, Markup, type Context } from 'telegraf';
 import type { Company, Invoice } from '@/lib/types';
 import { config, isChatAllowed } from './config.js';
-import {
-  saveFlightDraft,
-  createCustomer,
-  createInvoice,
-  getCompany,
-} from './api/safarmate.js';
+import { createCustomer, createInvoice, getCompany } from './api/safarmate.js';
 import { bootstrapBot } from './bootstrap.js';
 import { buildNewInvoiceBody } from './buildInvoicePayload.js';
-import { fetchWithRetry } from './http.js';
 import { invoiceForPdf } from './invoiceForPdf.js';
-import { parseFlightPdfLocal } from './parseFlightPdfLocal.js';
 import { renderInvoicePdf } from './renderPdf.js';
 import { sendPdfToChat } from './sendPdf.js';
+import { parseFlightPdfLocal } from './parseFlightPdfLocal.js';
+import {
+  downloadTelegramPdf,
+  finalizeExistingTicketDraft,
+  mergeAndSendGroupTickets,
+} from './existingTicketPdf.js';
 import {
   getSession,
   resetSession,
   type NewBillDraft,
   type NewBillStep,
 } from './session.js';
+import { passengerNameFromDraft, pnrFromDraft } from './mergeFlightDrafts.js';
+import type { FlightInvoiceDraft } from '../../server/src/utils/flightInvoiceDraft.js';
 import { BOT_TEMPLATES, needsTravelFields, templateById } from './templates.js';
 
 const bot = new Telegraf(config.botToken, { handlerTimeout: 300_000 });
@@ -95,14 +96,92 @@ bot.hears('🆕 New Safarmate bill', async (ctx) => {
   await ctx.reply('Choose invoice template:', templateKeyboard());
 });
 
+function existingTicketModeKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('1 ticket — 1 PDF', 'existing:single')],
+    [Markup.button.callback('Same PNR — several PDFs (group)', 'existing:group')],
+    [Markup.button.callback('« Cancel', 'cancel')],
+  ]);
+}
+
+function groupTicketDoneKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Done — one combined voucher', 'existing:group_done')],
+  ]);
+}
+
 bot.hears('📄 Existing ticket PDF', async (ctx) => {
   const session = getSession(ctx.chat!.id);
   session.flow = 'existing_bill';
+  session.existingBillMode = undefined;
+  session.groupTickets = undefined;
+  session.groupPnr = undefined;
   await ctx.reply(
-    'Send the *airline e-ticket*, *IndiGo itinerary*, or *Safarmate voucher* PDF as a document (not photo).\n\n' +
-      'I will parse it and reply with your Safarmate flight voucher PDF.',
+    'How is this booking?\n\n' +
+      '• *1 ticket — 1 PDF* — single passenger or one combined airline PDF\n' +
+      '• *Same PNR — several PDFs* — upload one e-ticket PDF per passenger (same booking), then tap *Done*',
+    { parse_mode: 'Markdown', ...existingTicketModeKeyboard() }
+  );
+});
+
+bot.action('existing:single', async (ctx) => {
+  const session = getSession(ctx.chat!.id);
+  session.flow = 'existing_bill';
+  session.existingBillMode = 'single';
+  session.groupTickets = undefined;
+  session.groupPnr = undefined;
+  await ctx.answerCbQuery();
+  await ctx.reply(
+    'Send the airline e-ticket, IndiGo itinerary, or agency PDF as a *document* (not photo).',
     { parse_mode: 'Markdown', ...mainMenu() }
   );
+});
+
+bot.action('existing:group', async (ctx) => {
+  const session = getSession(ctx.chat!.id);
+  session.flow = 'existing_bill';
+  session.existingBillMode = 'group_pnr';
+  session.groupTickets = [];
+  session.groupPnr = undefined;
+  await ctx.answerCbQuery();
+  await ctx.reply(
+    '*Same PNR — group upload*\n\n' +
+      '1. Send each passenger’s ticket PDF (one file at a time).\n' +
+      '2. I will check that the *PNR / booking reference* matches.\n' +
+      '3. When all members are uploaded, tap *Done* — I will make *one* Safarmate voucher with everyone’s names and barcodes.',
+    { parse_mode: 'Markdown', ...groupTicketDoneKeyboard() }
+  );
+});
+
+bot.action('existing:group_done', async (ctx) => {
+  const session = getSession(ctx.chat!.id);
+  await ctx.answerCbQuery();
+  if (session.flow !== 'existing_bill' || session.existingBillMode !== 'group_pnr') {
+    await ctx.reply('Start with *Existing ticket PDF* → *Same PNR — several PDFs*.', {
+      parse_mode: 'Markdown',
+    });
+    return;
+  }
+  const queue = session.groupTickets ?? [];
+  if (queue.length === 0) {
+    await ctx.reply('No PDFs yet. Send at least one ticket PDF, then tap Done.', groupTicketDoneKeyboard());
+    return;
+  }
+  try {
+    await mergeAndSendGroupTickets(
+      ctx,
+      queue.map((q) => q.draft),
+      queue.map((q) => q.extractionFormat)
+    );
+    resetSession(ctx.chat!.id);
+    await ctx.reply(
+      `Combined ${queue.length} ticket(s) into one voucher (PNR ${session.groupPnr ?? '—'}). Need another?`,
+      mainMenu()
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await ctx.reply(`Could not merge:\n${msg.slice(0, 500)}`, groupTicketDoneKeyboard());
+  }
 });
 
 bot.action(/^tpl:(.+)$/, async (ctx) => {
@@ -145,6 +224,20 @@ bot.on('text', async (ctx) => {
   }
 
   if (session.flow === 'existing_bill') {
+    if (session.existingBillMode === 'group_pnr') {
+      const lower = text.toLowerCase();
+      if (lower === 'done' || lower === 'merge') {
+        await ctx.reply('Tap *Done — one combined voucher* below.', {
+          parse_mode: 'Markdown',
+          ...groupTicketDoneKeyboard(),
+        });
+        return;
+      }
+    }
+    if (!session.existingBillMode) {
+      await ctx.reply('Choose 1 PDF or Same PNR group:', existingTicketModeKeyboard());
+      return;
+    }
     await ctx.reply('Please send a PDF *document* file.', { parse_mode: 'Markdown' });
   }
 });
@@ -281,6 +374,11 @@ bot.on('document', async (ctx) => {
     return;
   }
 
+  if (!session.existingBillMode) {
+    await ctx.reply('First choose *1 PDF* or *Same PNR group*:', existingTicketModeKeyboard());
+    return;
+  }
+
   const doc = ctx.message.document;
   const name = doc.file_name ?? 'ticket.pdf';
   if (!name.toLowerCase().endsWith('.pdf') && doc.mime_type !== 'application/pdf') {
@@ -289,84 +387,61 @@ bot.on('document', async (ctx) => {
   }
 
   const statusMsg = await ctx.reply('Downloading ticket…');
-  let savedInvoiceLabel = '';
   try {
-    const file = await ctx.telegram.getFile(doc.file_id);
-    if (!file.file_path) throw new Error('Could not download file from Telegram');
-    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
-    const res = await fetchWithRetry(url, {}, { timeoutMs: 90_000 });
-    if (!res.ok) throw new Error('Telegram file download failed');
-    const buffer = Buffer.from(await res.arrayBuffer());
+    const { buffer } = await downloadTelegramPdf(ctx, doc.file_id, name);
 
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id,
-      statusMsg.message_id,
-      undefined,
-      'Reading ticket (local)…'
-    ).catch(() => {});
+    await ctx.telegram
+      .editMessageText(ctx.chat!.id, statusMsg.message_id, undefined, 'Reading ticket (local)…')
+      .catch(() => {});
 
-    const [{ draft, extraction }, company] = await Promise.all([
-      parseFlightPdfLocal(buffer, name),
-      getCompany(),
-    ]);
+    const { draft, extraction } = await parseFlightPdfLocal(buffer, name);
+    const flightDraft = draft as FlightInvoiceDraft;
+    const pnr = pnrFromDraft(flightDraft);
+    const pax = passengerNameFromDraft(flightDraft);
 
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id,
-      statusMsg.message_id,
-      undefined,
-      'Saving bill in Safarmate…'
-    ).catch(() => {});
-
-    const invoice = await saveFlightDraft(draft as unknown as Record<string, unknown>);
-    const travel = (draft.travelDetails ?? {}) as Record<string, unknown>;
-    const invLabel = String(invoice.number ?? invoice._id ?? '');
-    savedInvoiceLabel = invLabel;
-
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id,
-      statusMsg.message_id,
-      undefined,
-      'Generating PDF…'
-    ).catch(() => {});
-
-    console.log('[telegram-bot] rendering voucher for', invLabel);
-    const pdf = await renderInvoicePdf(
-      invoiceForPdf(invoice),
-      company as unknown as Company
-    );
-    console.log('[telegram-bot] render done', pdf.length, 'bytes');
-
-    await ctx.telegram.editMessageText(
-      ctx.chat!.id,
-      statusMsg.message_id,
-      undefined,
-      'Uploading PDF to chat…'
-    ).catch(() => {});
-
-    const fmt = extraction?.format?.replace(/_/g, ' ') ?? 'PDF';
-    const filename = `safarmate-voucher-${travel.bookingId ?? invoice._id}.pdf`;
-    await sendPdfToChat(
-      ctx,
-      pdf,
-      filename,
-      `✅ Safarmate bill from ${fmt}\n${invLabel}\nSaved — check Invoices in app.`
-    );
+    if (session.existingBillMode === 'group_pnr') {
+      if (!session.groupTickets) session.groupTickets = [];
+      if (session.groupPnr && pnr && session.groupPnr !== pnr) {
+        await ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+        await ctx.reply(
+          `PNR mismatch.\nThis file: *${pnr}* (${pax})\nExpected: *${session.groupPnr}*\n\nSkip this file or cancel and start again.`,
+          { parse_mode: 'Markdown', ...groupTicketDoneKeyboard() }
+        );
+        return;
+      }
+      if (pnr) session.groupPnr = pnr;
+      session.groupTickets.push({
+        fileName: name,
+        draft: flightDraft,
+        extractionFormat: extraction.format,
+        barcodeCount: extraction.barcodeCount,
+      });
+      await ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+      const n = session.groupTickets.length;
+      await ctx.reply(
+        `Added *${pax}*${pnr ? ` (PNR ${pnr})` : ''} — ${n} PDF${n === 1 ? '' : 's'} queued.\n` +
+          (n < 2
+            ? 'Send the next passenger PDF, or tap *Done* if this was the only one.'
+            : 'Send more PDFs or tap *Done — one combined voucher*.'),
+        { parse_mode: 'Markdown', ...groupTicketDoneKeyboard() }
+      );
+      return;
+    }
 
     await ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+    await finalizeExistingTicketDraft(ctx, flightDraft, extraction.format);
     resetSession(ctx.chat!.id);
     await ctx.reply('Sent in chat. Need another?', mainMenu());
   } catch (err) {
     console.error('[telegram-bot] PDF flow error:', err);
     const msg = err instanceof Error ? err.message : String(err);
-    if (savedInvoiceLabel) {
-      await ctx.reply(
-        `Bill ${savedInvoiceLabel} is saved in Safarmate — check Invoices in the app.\n\nPDF could not be sent on Telegram:\n${msg.slice(0, 350)}`,
-        mainMenu()
-      );
+    await ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+    if (session.existingBillMode === 'group_pnr') {
+      await ctx.reply(`Could not read PDF:\n${msg.slice(0, 500)}`, groupTicketDoneKeyboard());
     } else {
       await ctx.reply(`Could not process PDF:\n${msg.slice(0, 500)}`, mainMenu());
+      resetSession(ctx.chat!.id);
     }
-    resetSession(ctx.chat!.id);
   }
 });
 
