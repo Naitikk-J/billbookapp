@@ -339,8 +339,88 @@ function parseIndigoSegments(
   return dedupeFlightSegments(segments);
 }
 
+function capsWord(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+/** Air India e-ticket: PASSENGER:SINGHBHUVESHKUMARMR(ADT) — surname + given, title before (ADT). */
+function parseAirIndiaCapsPassenger(caps: string, fileName?: string): string {
+  const core = caps.replace(/[^A-Za-z]/g, '').toUpperCase();
+  if (!core) return '';
+
+  const hint = passengerNameFromFileName(fileName);
+  if (hint) {
+    const hintCompact = hint.replace(/\s+/g, '').toUpperCase();
+    const idx = core.indexOf(hintCompact);
+    if (idx >= 0) {
+      const prefix = core.slice(0, idx);
+      const suffix = core.slice(idx + hintCompact.length);
+      if (prefix.length >= 2) {
+        const joined = `${hint} ${capsWord(prefix)}`.trim();
+        if (isPlausiblePassengerName(joined)) return joined;
+      }
+      const parts: string[] = [];
+      if (prefix.length >= 2) parts.push(capsWord(prefix));
+      parts.push(hint);
+      if (suffix.length >= 2 && !/^(MR|MRS|MS|MSTR|MISS)/.test(suffix)) {
+        parts.push(capsWord(suffix));
+      }
+      const joined = parts.join(' ').trim();
+      if (isPlausiblePassengerName(joined)) return joined;
+    }
+    const hintWords = hint.split(/\s+/).filter(Boolean);
+    if (hintWords.length === 1) {
+      const w = hintWords[0]!.toUpperCase();
+      const i = core.indexOf(w);
+      if (i > 0) {
+        const joined = `${hint} ${capsWord(core.slice(0, i))}`.trim();
+        if (isPlausiblePassengerName(joined)) return joined;
+      }
+    }
+  }
+
+  const SURNAME_PREFIXES = ['KUMAR', 'SINGH', 'VATS', 'DEVI', 'SHARMA', 'GUPTA', 'PATEL', 'REDDY'];
+  for (const s of SURNAME_PREFIXES) {
+    if (core.startsWith(s) && core.length > s.length + 2) {
+      const joined = `${capsWord(core.slice(s.length))} ${capsWord(s)}`;
+      if (isPlausiblePassengerName(joined)) return joined;
+    }
+    if (core.endsWith(s) && core.length > s.length + 2) {
+      const joined = `${capsWord(core.slice(0, -s.length))} ${capsWord(s)}`;
+      if (isPlausiblePassengerName(joined)) return joined;
+    }
+  }
+
+  const split = splitSmushedCapsName(core);
+  if (isPlausiblePassengerName(split)) return split;
+
+  if (/^[A-Z]{5,}[A-Z]{4,}$/.test(core)) {
+    for (let i = 3; i <= Math.min(12, core.length - 3); i++) {
+      const a = capsWord(core.slice(0, i));
+      const b = capsWord(core.slice(i));
+      const joined = `${b} ${a}`;
+      if (isPlausiblePassengerName(joined)) return joined;
+    }
+  }
+
+  if (core.length >= 8 && core.length <= 28) {
+    for (let i = 4; i <= core.length - 4; i++) {
+      const joined = `${capsWord(core.slice(i))} ${capsWord(core.slice(0, i))}`;
+      if (isPlausiblePassengerName(joined)) return joined;
+    }
+  }
+  return split;
+}
+
 function parseAirIndiaPassengerName(flat: string, raw: string, fileName?: string): string {
   const fromFile = passengerNameFromFileName(fileName);
+
+  const capsMatch = flat.match(
+    /PASSENGER:([A-Z]+?)(?:MR|MRS|MS|MSTR|MISS)(?:\(ADT\)|\(CHD\)|\(INF\))/i
+  );
+  const fromCaps = capsMatch ? parseAirIndiaCapsPassenger(capsMatch[1]!, fileName) : '';
 
   const slash =
     flat.match(/PASSENGER:\s*([A-Z]+)\/([A-Z\s]+?)(?:\(ADT\)|\(CHD\)|\(INF\)|\s|$)/i) ??
@@ -351,20 +431,107 @@ function parseAirIndiaPassengerName(flat: string, raw: string, fileName?: string
 
   const spaced =
     flat.match(/PASSENGER:\s*([A-Z][A-Z\s.'-]+)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1]?.trim() ??
-    raw.match(/PASSENGER:\s*([A-Z][A-Z\s.'-]+)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1]?.trim() ??
     '';
 
-  const compact =
-    flat.match(/PASSENGER:\s*([A-Z]{8,})(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1] ??
-    '';
+  if (fromFile && isPlausiblePassengerName(fromFile)) return fromFile;
+  if (fromCaps && isPlausiblePassengerName(fromCaps)) return fromCaps;
+  return pickLongestPassengerName(fromFile, fromCaps, slashName, spaced);
+}
 
-  const smushed = compact && !compact.includes(' ') ? splitSmushedCapsName(compact) : '';
+const AIR_INDIA_CITY_HINTS: Array<{ re: RegExp; iata: string }> = [
+  { re: /INDIRA GANDHI|DELHI/, iata: 'DEL' },
+  { re: /SINGAPORE|CHANGI/, iata: 'SIN' },
+  { re: /DUBAI/, iata: 'DXB' },
+  { re: /HEATHROW|\bLONDON\b/, iata: 'LHR' },
+  { re: /MUMBAI|CHHATRAPATI SHIVAJI/, iata: 'BOM' },
+  { re: /\bHYDERABAD\b|RAJIV GANDHI/, iata: 'HYD' },
+  { re: /JABALPUR|\bJLR\b/, iata: 'JLR' },
+  { re: /BENGALURU|KEMPEGOWDA|\bBLR\b/, iata: 'BLR' },
+  { re: /COIMBATORE|\bCJB\b/, iata: 'CJB' },
+  { re: /CHANDIGARH|\bIXC\b/, iata: 'IXC' },
+];
 
-  const section = extractPassengerNameFromSection(
-    raw.match(/Passenger\s*Name([\s\S]{0,400})/i)?.[1] ?? flat.slice(0, 800)
-  );
+function iatasFromSnippet(snippet: string): string[] {
+  const upper = snippet.toUpperCase();
+  const hits: Array<{ iata: string; idx: number }> = [];
+  for (const { re, iata } of AIR_INDIA_CITY_HINTS) {
+    const m = upper.match(re);
+    if (m?.index != null) hits.push({ iata, idx: m.index });
+  }
+  hits.sort((a, b) => a.idx - b.idx);
+  const out: string[] = [];
+  for (const h of hits) {
+    if (!out.includes(h.iata)) out.push(h.iata);
+  }
+  return out;
+}
 
-  return pickLongestPassengerName(fromFile, slashName, spaced, smushed, section);
+function normalizeSmushedAirIndiaFlight(match: string): string {
+  const body = match.replace(/^AI/i, '');
+  const mFlightTime = body.match(/^(\d{3})(\d{1,2}):(\d{2})$/);
+  if (mFlightTime) {
+    return `AI ${mFlightTime[1]} ${mFlightTime[2].padStart(2, '0')}:${mFlightTime[3]}`;
+  }
+  const mLong = body.match(/^(\d{3})(\d{3}):(\d{2})$/);
+  if (mLong) {
+    const depH = Number(mLong[2]) > 23 ? mLong[2].slice(1) : mLong[2].slice(-2);
+    return `AI ${mLong[1]} ${depH}:${mLong[3]}`;
+  }
+  const m4h = body.match(/^(\d{3,4})(\d{2}):(\d{2})$/);
+  if (m4h) return `AI ${m4h[1]} ${m4h[2]}:${m4h[3]}`;
+  return match;
+}
+
+function normalizeAirIndiaFlat(flat: string): string {
+  return flat.replace(/\bAI\d{5,}:\d{2}\b/gi, (token) => normalizeSmushedAirIndiaFlight(token));
+}
+
+function parseAirIndiaFlightLegs(
+  flat: string,
+  pnr: string,
+  passengerName: string
+): NormalisedFlight[] {
+  const normalized = normalizeAirIndiaFlat(flat);
+  const flightRe =
+    /\bAI\s+(\d{2,4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}[A-Za-z]{3}\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}[A-Za-z]{3}\d{4})/gi;
+  const segments: NormalisedFlight[] = [];
+  const pax = passengerName ? [{ name: passengerName, seat: '', cabin: '' }] : [];
+  let match: RegExpExecArray | null;
+
+  while ((match = flightRe.exec(normalized)) !== null) {
+    const idx = match.index ?? 0;
+    const ctx = normalized.slice(Math.max(0, idx - 280), idx);
+    const routeSlice = ctx.split(/FlightToDepartureArrivalFrom/i).pop() ?? ctx;
+    const iatas = iatasFromSnippet(routeSlice.slice(-200));
+    let fromAirport = iatas[0] ?? '';
+    let toAirport = iatas[1] ?? '';
+    if (!toAirport || toAirport === fromAirport) {
+      toAirport = iatas.find((c) => c !== fromAirport) ?? toAirport;
+    }
+    if (!fromAirport && iatas.length >= 2) {
+      fromAirport = iatas[iatas.length - 2] ?? '';
+      toAirport = iatas[iatas.length - 1] ?? '';
+    }
+    const dep = parseCompactDate(match[3]!, match[2]!);
+    const arr = parseCompactDate(match[5]!, match[4]!);
+    segments.push(
+      normaliseFlight({
+        pnr,
+        airline: 'Air India',
+        airlineCode: 'AI',
+        flightNumber: `AI ${match[1]}`,
+        fromAirport,
+        toAirport,
+        fromCity: cityForIata(fromAirport),
+        toCity: cityForIata(toAirport),
+        departureAt: dep,
+        arrivalAt: arr,
+        passengers: pax,
+        status: 'confirmed',
+      })
+    );
+  }
+  return dedupeFlightSegments(segments);
 }
 
 /** Prefer the longest plausible passenger line from a ticket block. */
@@ -415,8 +582,8 @@ function passengerNameFromFileName(fileName?: string): string {
   if (!fileName) return '';
   const base = fileName.replace(/\.pdf$/i, '').split(/[/\\]/).pop() ?? '';
   const m =
-    base.match(/-\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+)+)\s*$/) ??
-    base.match(/\(\s*[A-Z0-9]+\s*\)\s*-\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+)+)\s*$/i);
+    base.match(/\(\s*[A-Z0-9]+\s*\)\s*-\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+)+)/i) ??
+    base.match(/-\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+)+)\s*(?:\(\d+\))?\s*$/);
   return m ? humanizePassenger(cleanPdfWhitespace(m[1])) : '';
 }
 
@@ -435,39 +602,7 @@ function parseAirIndia(flat: string, raw: string, fileName?: string): FlightPdfE
   const total = flat.match(/TotalAmount:\s*INR\s*([\d,]+)/i)?.[1]?.replace(/,/g, '');
   if (total) charges.grandTotal = Number(total) || 0;
 
-  const flightRe =
-    /(?:^|\s)(AI)(\d{2,3})(\d{1,2}:\d{2})\s+(\d{1,2}[A-Za-z]{3}\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}[A-Za-z]{3}\d{4})/gi;
-  const segments: NormalisedFlight[] = [];
-  let match: RegExpExecArray | null;
-  const routePairs = [
-    { from: 'LHR', fromCity: 'London', to: 'BOM', toCity: 'Mumbai' },
-    { from: 'BOM', fromCity: 'Mumbai', to: 'LHR', toCity: 'London' },
-  ];
-
-  let leg = 0;
-  while ((match = flightRe.exec(flat)) !== null) {
-    const fn = `${match[1]}${match[2]}`.toUpperCase();
-    const dep = parseCompactDate(match[4], match[3]);
-    const arr = parseCompactDate(match[6], match[5]);
-    const route = routePairs[leg] ?? routePairs[0];
-    segments.push(
-      normaliseFlight({
-        pnr,
-        airline: 'Air India',
-        airlineCode: 'AI',
-        flightNumber: fn,
-        fromCity: route.fromCity,
-        toCity: route.toCity,
-        fromAirport: route.from,
-        toAirport: route.to,
-        departureAt: dep,
-        arrivalAt: arr,
-        passengers: charges.billToName ? [{ name: charges.billToName, seat: '', cabin: '' }] : [],
-        status: 'confirmed',
-      })
-    );
-    leg += 1;
-  }
+  const segments = parseAirIndiaFlightLegs(flat, pnr, charges.billToName);
 
   return { format: 'air_india_eticket', segments, charges, rawTextLength: flat.length };
 }

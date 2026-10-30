@@ -140,10 +140,6 @@ function clean(value?: string | null): string {
   return v || '';
 }
 
-function telegramCompactPdf(): boolean {
-  return typeof process !== 'undefined' && process.env.SAFARMATE_TELEGRAM_PDF === '1';
-}
-
 function pickLongestName(...candidates: Array<string | undefined | null>): string {
   return candidates
     .map((c) => clean(c))
@@ -289,10 +285,7 @@ export function SafarmateFlightVoucherTemplate({
     return { pnrSnapshot: snapshots.length === 1 ? snapshots[0] : null, sectorSnapshots: snapshots };
   }, [snapshots, segments.length]);
 
-  const compact = telegramCompactPdf();
-
   const sectorBarcodes = useMemo(() => {
-    if (compact) return [];
     return segments.map((seg, idx) => {
       const from = clean(seg.fromAirport) || clean(seg.fromCity);
       const to = clean(seg.toAirport) || clean(seg.toCity);
@@ -306,13 +299,12 @@ export function SafarmateFlightVoucherTemplate({
         fromOriginal: Boolean(snapshotSrc),
       };
     });
-  }, [segments, pnr, bookingId, sectorSnapshots, compact]);
+  }, [segments, pnr, bookingId, sectorSnapshots]);
 
   const pnrBarcodeSrc = useMemo(() => {
-    if (compact) return null;
     if (pnrSnapshot) return pnrSnapshot;
     return barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 });
-  }, [pnrSnapshot, pnr, bookingId, compact]);
+  }, [pnrSnapshot, pnr, bookingId]);
 
   return (
     <Document>

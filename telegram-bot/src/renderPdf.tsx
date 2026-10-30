@@ -23,7 +23,6 @@ export async function renderInvoicePdf(
   if (config.publicAppUrl) {
     process.env.SAFARMATE_PUBLIC_URL = config.publicAppUrl;
   }
-  process.env.SAFARMATE_TELEGRAM_PDF = '1';
   const template = getTemplate(invoice.template);
   const doc = template.render({ invoice, company });
   const buf = await Promise.race([
