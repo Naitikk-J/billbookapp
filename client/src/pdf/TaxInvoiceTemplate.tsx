@@ -1,15 +1,11 @@
 import { Document, Image, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Company, Invoice, InvoiceLineItem } from '@/lib/types';
-import { fmtDate } from './shared';
 
-const NAVY = '#16324F';
-const TEAL = '#1F8A9B';
-const GOLD = '#E0A23A';
-const INK = '#1C2834';
-const MUTED = '#5E6C7B';
-const LINE = '#D5DEE6';
-const WASH = '#F4F7F9';
-const PAPER = '#FFFFFF';
+const BORDER = '#333333';
+const INK = '#111111';
+const MUTED = '#444444';
+const HEAD = '#E8E8E8';
+const BAR = '#F0F0F0';
 
 const STATE_CODES: Record<string, string> = {
   'jammu and kashmir': '01',
@@ -58,175 +54,142 @@ const STATE_CODES: Record<string, string> = {
 const styles = StyleSheet.create({
   page: {
     fontFamily: 'Helvetica',
-    fontSize: 8,
+    fontSize: 8.5,
     color: INK,
-    backgroundColor: PAPER,
+    paddingTop: 22,
+    paddingBottom: 18,
+    paddingHorizontal: 24,
   },
-  barTeal: { height: 5, backgroundColor: TEAL },
-  barGold: { height: 2.5, backgroundColor: GOLD },
-  body: { paddingHorizontal: 28, paddingTop: 18, paddingBottom: 22 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  kicker: {
-    fontSize: 8,
-    fontWeight: 700,
-    color: TEAL,
-    letterSpacing: 1.6,
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
   },
-  number: { marginTop: 2, fontSize: 13, fontWeight: 700, color: NAVY, letterSpacing: 0.2 },
-  logo: { width: 118, height: 90, objectFit: 'contain' },
-  dueRow: {
-    marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    backgroundColor: WASH,
+  titleLine: { fontSize: 11, fontWeight: 700, letterSpacing: 0.2 },
+  logo: { width: 108, height: 82, objectFit: 'contain' },
+  dueBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  dueLabel: { fontSize: 7, fontWeight: 700, color: MUTED, letterSpacing: 0.8 },
-  dueValue: { marginTop: 1, fontSize: 9, fontWeight: 700, color: NAVY },
-  dueHint: { marginTop: 2, fontSize: 7, color: MUTED },
-  dueAmount: { fontSize: 13, fontWeight: 700, color: NAVY },
-  parties: {
-    marginTop: 12,
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: LINE,
-    borderRadius: 4,
-  },
-  party: { flex: 1, padding: 10 },
-  partySplit: { width: 1, backgroundColor: LINE },
-  partyKicker: {
-    fontSize: 7,
-    fontWeight: 700,
-    color: TEAL,
-    letterSpacing: 1.1,
-    marginBottom: 4,
-  },
-  partyName: { fontSize: 10, fontWeight: 700, color: NAVY, marginBottom: 2 },
-  partyLine: { fontSize: 8, color: INK, lineHeight: 1.35 },
-  kv: { flexDirection: 'row', marginTop: 2, alignItems: 'flex-start' },
-  kvKey: { width: 82, fontSize: 7.5, color: MUTED },
-  kvVal: { flex: 1, fontSize: 7.5, fontWeight: 600, color: INK },
-  sheet: {
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: LINE,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  sheetHead: { flexDirection: 'row', backgroundColor: NAVY, color: '#FFFFFF' },
-  headCell: { paddingVertical: 6, paddingHorizontal: 8 },
-  headTitle: { fontSize: 7.5, fontWeight: 700, letterSpacing: 0.6, color: '#FFFFFF' },
-  headSub: { fontSize: 6.5, color: '#C5D2DE', marginTop: 1 },
-  sheetBody: { flexDirection: 'row' },
-  col: { paddingVertical: 4 },
-  colSplit: { width: 1, backgroundColor: LINE },
-  itemRow: { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 8 },
-  itemDesc: { flex: 1.7, paddingRight: 6 },
-  itemAmt: { flex: 0.9, textAlign: 'right' },
-  svcDesc: { flex: 1.45, paddingRight: 4 },
-  svcSac: { flex: 0.7, textAlign: 'center' },
-  svcAmt: { flex: 0.95, textAlign: 'right' },
-  itemTitle: { fontSize: 8, fontWeight: 600 },
-  itemSub: { fontSize: 7, color: MUTED, marginTop: 1 },
-  taxRow: {
-    flexDirection: 'row',
-    paddingVertical: 2,
+    backgroundColor: BAR,
+    borderWidth: 0.6,
+    borderColor: BORDER,
+    paddingVertical: 5,
     paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  taxLabel: { flex: 1.45, fontSize: 7.5, fontWeight: 700, color: MUTED },
-  sheetFoot: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: LINE,
-    backgroundColor: WASH,
-  },
-  footCell: { paddingVertical: 6, paddingHorizontal: 8, flexDirection: 'row', justifyContent: 'space-between' },
-  footLabel: { fontSize: 7.5, fontWeight: 700, color: NAVY },
-  footValue: { fontSize: 8, fontWeight: 700, color: NAVY },
-  summary: { marginTop: 10, alignSelf: 'flex-end', width: 230 },
-  sumRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
-  sumLabel: { fontSize: 8, color: MUTED },
-  sumValue: { fontSize: 8, fontWeight: 600 },
-  netRow: {
-    marginTop: 4,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    backgroundColor: NAVY,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  netLabel: { fontSize: 7.5, fontWeight: 700, color: '#D5E4EF', letterSpacing: 0.7 },
-  netValue: { fontSize: 12, fontWeight: 700, color: '#FFFFFF' },
-  lower: {
-    marginTop: 14,
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: LINE,
-    paddingTop: 10,
-  },
-  lowerCol: { flex: 1, paddingRight: 12 },
-  blockKicker: {
-    fontSize: 7,
-    fontWeight: 700,
-    color: TEAL,
-    letterSpacing: 1.1,
     marginBottom: 4,
   },
-  blockName: { fontSize: 9, fontWeight: 700, color: NAVY, marginBottom: 2 },
-  blockLine: { fontSize: 7.5, color: INK, lineHeight: 1.4 },
-  sign: { marginTop: 12, alignItems: 'flex-end' },
-  forLine: { fontSize: 7.5, fontWeight: 700, color: NAVY },
-  signGap: { height: 28 },
-  signImg: { width: 90, height: 36, objectFit: 'contain', marginVertical: 2 },
-  signLabel: {
-    marginTop: 2,
-    fontSize: 7,
-    color: MUTED,
+  dueLeft: { fontSize: 8.5, fontWeight: 700 },
+  dueRight: { fontSize: 10, fontWeight: 700 },
+  reverseCharge: { fontSize: 8, marginBottom: 8, color: MUTED },
+  partyGrid: {
+    flexDirection: 'row',
+    borderWidth: 0.6,
+    borderColor: BORDER,
+    marginBottom: 0,
+  },
+  partyCol: { flex: 1, padding: 7, minHeight: 118 },
+  partyDivider: { width: 0.6, backgroundColor: BORDER },
+  labelRow: { flexDirection: 'row', marginTop: 2 },
+  label: { width: 72, fontSize: 8, color: MUTED },
+  value: { flex: 1, fontSize: 8.5 },
+  issuerName: { fontSize: 9.5, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' },
+  table: { borderWidth: 0.6, borderColor: BORDER, borderTopWidth: 0 },
+  tableHead: { flexDirection: 'row', backgroundColor: HEAD, borderBottomWidth: 0.6, borderBottomColor: BORDER },
+  headHalf: { flex: 1, padding: 5, borderRightWidth: 0.6, borderRightColor: BORDER },
+  headHalfLast: { flex: 1, padding: 5 },
+  headTitle: { fontSize: 8.5, fontWeight: 700, textTransform: 'uppercase' },
+  headSub: { fontSize: 7.5, marginTop: 2, color: MUTED },
+  subHead: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.6,
+    borderBottomColor: BORDER,
+    backgroundColor: '#FAFAFA',
+  },
+  subCell: { paddingVertical: 4, paddingHorizontal: 5, fontSize: 7.5, fontWeight: 700, color: MUTED },
+  bodyRow: { flexDirection: 'row', minHeight: 72 },
+  bodyHalf: { flex: 1, borderRightWidth: 0.6, borderRightColor: BORDER },
+  bodyHalfLast: { flex: 1 },
+  lineRow: { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 5, alignItems: 'flex-start' },
+  descCol: { flex: 1.55, paddingRight: 4 },
+  amtCol: { flex: 0.85, textAlign: 'right' },
+  sacCol: { flex: 0.65, textAlign: 'center' },
+  taxRow: { flexDirection: 'row', paddingVertical: 2, paddingHorizontal: 5 },
+  taxName: { flex: 1.55, fontSize: 8, fontWeight: 700 },
+  taxPct: { flex: 0.65, textAlign: 'center', fontSize: 8 },
+  taxAmt: { flex: 0.85, textAlign: 'right', fontSize: 8 },
+  footRow: {
+    flexDirection: 'row',
     borderTopWidth: 0.6,
-    borderTopColor: LINE,
-    paddingTop: 3,
-    width: 120,
-    textAlign: 'center',
+    borderTopColor: BORDER,
+    backgroundColor: HEAD,
   },
-  payBox: {
-    marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    backgroundColor: '#FBF8F2',
-    borderWidth: 1,
-    borderColor: '#E7D7B4',
+  footHalf: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    paddingHorizontal: 5,
+    borderRightWidth: 0.6,
+    borderRightColor: BORDER,
   },
-  payLabel: { fontSize: 7, fontWeight: 700, color: '#8A6A22', letterSpacing: 0.8 },
-  payLine: { marginTop: 2, fontSize: 7.5, color: INK, lineHeight: 1.4 },
-  note: { marginTop: 8, fontSize: 7.5, color: MUTED, lineHeight: 1.4 },
-  addressLine: { marginTop: 8, fontSize: 7, color: MUTED, textAlign: 'center', lineHeight: 1.35 },
-  disclaimer: { marginTop: 4, fontSize: 7, color: MUTED, textAlign: 'center' },
+  footHalfLast: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    paddingHorizontal: 5,
+  },
+  footLabel: { fontSize: 8, fontWeight: 700 },
+  footValue: { fontSize: 8.5, fontWeight: 700 },
+  totalsBlock: { marginTop: 8, alignSelf: 'flex-end', width: 240 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
+  totalLabel: { fontSize: 8.5, fontWeight: 700 },
+  totalValue: { fontSize: 8.5, fontWeight: 700 },
+  lower: { flexDirection: 'row', marginTop: 14, borderTopWidth: 0.6, borderTopColor: BORDER, paddingTop: 8 },
+  lowerCol: { flex: 1, paddingRight: 10 },
+  sectionTitle: { fontSize: 8.5, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' },
+  lowerLine: { fontSize: 8, lineHeight: 1.35, marginTop: 1 },
+  signBlock: { marginTop: 10, alignItems: 'flex-end' },
+  forLine: { fontSize: 8, fontWeight: 700, textTransform: 'uppercase' },
+  signSpace: { height: 26 },
+  signImg: { width: 88, height: 34, objectFit: 'contain', marginVertical: 2 },
+  signLabel: { fontSize: 7.5, marginTop: 2 },
+  payBanner: {
+    marginTop: 10,
+    borderWidth: 0.6,
+    borderColor: BORDER,
+    backgroundColor: BAR,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  payText: { fontSize: 8, fontWeight: 700, textTransform: 'uppercase', lineHeight: 1.4 },
+  addrBlock: { marginTop: 8 },
+  addrLine: { fontSize: 7.5, color: MUTED, lineHeight: 1.35 },
+  disclaimer: { marginTop: 6, fontSize: 7.5, color: MUTED, textAlign: 'center' },
+  itemMain: { fontSize: 8.5, fontWeight: 700 },
+  itemSub: { fontSize: 8, marginTop: 1 },
 });
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-function money(amount: number, currency = 'INR'): string {
-  const value = Number.isFinite(amount) ? amount : 0;
-  const formatted = new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-  return currency === 'INR' ? `Rs. ${formatted}` : `${currency} ${formatted}`;
+function moneyInr(amount: number): string {
+  const value = round2(Number.isFinite(amount) ? amount : 0);
+  if (Math.round((value % 1) * 100) === 0) return `INR ${value.toFixed(1)}`;
+  return `INR ${value.toFixed(2)}`;
 }
 
 function clean(value?: string | null): string {
   const v = (value ?? '').trim();
   if (!v || /^(na|n\/a|none|null|undefined|-)$/i.test(v)) return '';
   return v;
+}
+
+function displayGst(value?: string): string {
+  const v = clean(value);
+  return v || 'na';
 }
 
 function gstStateCode(gst?: string): string {
@@ -242,23 +205,18 @@ function stateCode(state?: string, gst?: string): string {
   return STATE_CODES[key] ?? '';
 }
 
-function addressLines(parts: {
+function joinAddress(parts: {
   address?: string;
   city?: string;
   state?: string;
   postalCode?: string;
-  country?: string;
-}): string[] {
-  const lines: string[] = [];
-  const street = clean(parts.address);
-  if (street) lines.push(street);
-  const cityLine = [clean(parts.city), clean(parts.state), clean(parts.postalCode)]
+}): string {
+  return [
+    clean(parts.address),
+    [clean(parts.city), clean(parts.state), clean(parts.postalCode)].filter(Boolean).join(' '),
+  ]
     .filter(Boolean)
     .join(', ');
-  if (cityLine) lines.push(cityLine);
-  const country = clean(parts.country);
-  if (country && country.toLowerCase() !== 'india') lines.push(country);
-  return lines;
 }
 
 function lineTaxable(item: InvoiceLineItem): number {
@@ -270,9 +228,7 @@ function lineTaxable(item: InvoiceLineItem): number {
   return round2(gross - disc);
 }
 
-function brandLogo(company: Company | null): string {
-  const custom = clean(company?.logoUrl);
-  if (custom) return custom;
+function safarmateLogoSrc(): string {
   const path = '/brand/safarmate-logo.png';
   if (typeof window !== 'undefined' && window.location?.origin) {
     return `${window.location.origin}${path}`;
@@ -280,23 +236,15 @@ function brandLogo(company: Company | null): string {
   return path;
 }
 
-function docTitle(kind: Invoice['kind']): string {
-  if (kind === 'quote') return 'QUOTATION';
-  if (kind === 'proforma') return 'PROFORMA INVOICE';
-  if (kind === 'receipt') return 'RECEIPT';
-  return 'TAX INVOICE';
-}
-
 function websiteLabel(website?: string): string {
   return clean(website).replace(/^https?:\/\//i, '').replace(/\/$/, '');
 }
 
-function Kv({ label, value }: { label: string; value: string }) {
-  if (!value) return null;
+function Field({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.kv}>
-      <Text style={styles.kvKey}>{label}</Text>
-      <Text style={styles.kvVal}>{value}</Text>
+    <View style={styles.labelRow}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value}</Text>
     </View>
   );
 }
@@ -308,25 +256,25 @@ export function TaxInvoiceTemplate({
   invoice: Invoice;
   company: Company | null;
 }) {
-  const currency = invoice.currency || company?.currency || 'INR';
   const brand = clean(company?.legalName) || clean(company?.name) || 'Safarmate';
+  const brandUpper = brand.toUpperCase();
   const customer = invoice.customerSnapshot ?? {};
-  const customerLines = addressLines(customer);
-  const companyLines = addressLines({
+  const customerName = clean(customer.name) || '-';
+  const customerAddress = joinAddress(customer);
+  const customerState = clean(customer.state);
+  const customerGst = clean(customer.gstNumber);
+  const supplyCode = stateCode(customerState, customerGst);
+
+  const companyAddress = joinAddress({
     address: company?.address,
     city: company?.city,
     state: company?.state,
     postalCode: company?.postalCode,
-    country: company?.country,
   });
-  const customerGst = clean(customer.gstNumber);
   const companyGst = clean(company?.gstNumber);
   const companyPan = clean(company?.panNumber);
   const cin = clean(company?.cinNumber);
-  const customerState = clean(customer.state);
-  const companyState = clean(company?.state);
-  const supplyCode = stateCode(customerState, customerGst);
-  const companyCode = stateCode(companyState, companyGst);
+  const payCity = clean(company?.city) || clean(company?.state) || 'India';
 
   const reimbursements =
     invoice.taxMode === 'none'
@@ -339,11 +287,14 @@ export function TaxInvoiceTemplate({
 
   const rates = [...new Set(taxableItems.map((item) => Number(item.taxPercent) || 0))];
   const uniformRate = rates.length === 1 ? rates[0] : null;
-  const rateLabel = (value: number | null) =>
-    value == null ? '-' : `${Number.isInteger(value) ? value.toFixed(0) : value}%`;
-  const igstRate = invoice.taxMode === 'inter' ? rateLabel(uniformRate) : '-';
-  const halfRate =
-    invoice.taxMode === 'intra' && uniformRate != null ? rateLabel(uniformRate / 2) : '-';
+  const igstPct =
+    invoice.taxMode === 'inter' && uniformRate != null
+      ? `${uniformRate % 1 === 0 ? uniformRate.toFixed(1) : uniformRate} %`
+      : '--';
+  const halfPct =
+    invoice.taxMode === 'intra' && uniformRate != null
+      ? `${(uniformRate / 2) % 1 === 0 ? (uniformRate / 2).toFixed(1) : uniformRate / 2} %`
+      : '--';
 
   const reimbTotal = round2(reimbursements.reduce((sum, item) => sum + lineTaxable(item), 0));
   const serviceBase = round2(taxableItems.reduce((sum, item) => sum + lineTaxable(item), 0));
@@ -351,241 +302,202 @@ export function TaxInvoiceTemplate({
     (invoice.cgstTotal || 0) + (invoice.sgstTotal || 0) + (invoice.igstTotal || 0)
   );
   const afterTax = round2(serviceBase + taxSum);
+  const net = invoice.amountPaid > 0 ? invoice.balanceDue : invoice.grandTotal;
 
   const td = invoice.travelDetails ?? {};
-  const trip = [clean(td.packageName), clean(td.destination)].filter(Boolean).join(' · ');
-  const lead = clean(customer.name);
+  const packageRef = clean(td.packageName) || clean(td.destination);
+  const leadPax = customerName !== '-' ? customerName : '';
 
   const contactName = clean(company?.contactName);
   const phone = clean(company?.phone);
   const email = clean(company?.email);
   const website = websiteLabel(company?.website);
-  const bankBits = [
-    clean(company?.bankName) ? `Bank: ${clean(company?.bankName)}` : '',
-    clean(company?.accountNumber) ? `A/c: ${clean(company?.accountNumber)}` : '',
-    clean(company?.ifsc) ? `IFSC: ${clean(company?.ifsc)}` : '',
-    clean(company?.bankBranch) ? `Branch: ${clean(company?.bankBranch)}` : '',
-    clean(company?.upiId) ? `UPI: ${clean(company?.upiId)}` : '',
-  ].filter(Boolean);
-  const payableTo = clean(company?.beneficiaryName) || brand;
-  const city = clean(company?.city);
-  const registered = companyLines.join(', ');
-  const net = invoice.amountPaid > 0 ? invoice.balanceDue : invoice.grandTotal;
+  const payableTo = (clean(company?.beneficiaryName) || brand).toUpperCase();
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <View style={styles.barTeal} />
-        <View style={styles.barGold} />
-        <View style={styles.body}>
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.kicker}>{docTitle(invoice.kind)}</Text>
-              <Text style={styles.number}>{invoice.number}</Text>
-            </View>
-            <Image src={brandLogo(company)} style={styles.logo} />
-          </View>
+        <View style={styles.topRow}>
+          <Text style={styles.titleLine}>TAX INVOICE : {invoice.number}</Text>
+          <Image src={safarmateLogoSrc()} style={styles.logo} />
+        </View>
 
-          <View style={styles.dueRow}>
-            <View>
-              <Text style={styles.dueLabel}>PAYMENT DUE BY</Text>
-              <Text style={styles.dueValue}>{invoice.dueDate ? fmtDate(invoice.dueDate) : '-'}</Text>
-              <Text style={styles.dueHint}>Reverse charge applicable (Y/N): N</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.dueLabel}>AMOUNT</Text>
-              <Text style={styles.dueAmount}>{money(invoice.grandTotal, currency)}</Text>
-            </View>
-          </View>
+        <View style={styles.dueBar}>
+          <Text style={styles.dueLeft}>PAYMENT DUE BY:</Text>
+          <Text style={styles.dueRight}>{moneyInr(invoice.grandTotal)}</Text>
+        </View>
+        <Text style={styles.reverseCharge}>IS REVERSE CHARGE APPLICABLE (Y/N)? N</Text>
 
-          <View style={styles.parties}>
-            <View style={styles.party}>
-              <Text style={styles.partyKicker}>BILLED TO</Text>
-              <Text style={styles.partyName}>{lead || '-'}</Text>
-              {customerLines.map((line) => (
-                <Text key={line} style={styles.partyLine}>
-                  {line}
-                </Text>
-              ))}
-              <View style={{ marginTop: 6 }}>
-                <Kv label="GSTIN" value={customerGst || '-'} />
-                <Kv label="State" value={customerState} />
-                <Kv label="Place of supply" value={customerState} />
-                <Kv label="State code" value={supplyCode} />
-                {clean(customer.phone) ? <Kv label="Phone" value={clean(customer.phone)} /> : null}
-              </View>
+        <View style={styles.partyGrid}>
+          <View style={styles.partyCol}>
+            <Field label="Name :" value={customerName} />
+            {customerAddress ? <Field label="Address:" value={customerAddress} /> : null}
+            <Field label="GSTIN :" value={displayGst(customerGst)} />
+            <Field label="State :" value={customerState || '-'} />
+            <Field label="Place of Supply :" value={customerState || '-'} />
+            <Field label="State Code:" value={supplyCode || '-'} />
+          </View>
+          <View style={styles.partyDivider} />
+          <View style={styles.partyCol}>
+            <Text style={styles.issuerName}>{brandUpper}</Text>
+            {companyAddress ? <Field label="Reg. Address :" value={companyAddress} /> : null}
+            {cin ? <Field label="CIN No.:" value={cin} /> : null}
+            <Field label="GSTIN :" value={displayGst(companyGst)} />
+          </View>
+        </View>
+
+        <View style={styles.table}>
+          <View style={styles.tableHead}>
+            <View style={styles.headHalf}>
+              <Text style={styles.headTitle}>REIMBURSEMENT</Text>
             </View>
-            <View style={styles.partySplit} />
-            <View style={styles.party}>
-              <Text style={styles.partyKicker}>ISSUED BY</Text>
-              <Text style={styles.partyName}>{brand}</Text>
-              {companyLines.map((line) => (
-                <Text key={line} style={styles.partyLine}>
-                  {line}
-                </Text>
-              ))}
-              <View style={{ marginTop: 6 }}>
-                <Kv label="GSTIN" value={companyGst || '-'} />
-                <Kv label="PAN" value={companyPan} />
-                <Kv label="State" value={companyState} />
-                <Kv label="State code" value={companyCode} />
-                {cin ? <Kv label="CIN / LLPIN" value={cin} /> : null}
-              </View>
+            <View style={styles.headHalfLast}>
+              <Text style={styles.headTitle}>TAXABLE SERVICES (IF ANY)</Text>
             </View>
           </View>
-
-          <View style={styles.sheet}>
-            <View style={styles.sheetHead}>
-              <View style={[styles.headCell, { flex: 1 }]}>
-                <Text style={styles.headTitle}>REIMBURSEMENT</Text>
-                <Text style={styles.headSub}>Description · Amount</Text>
-              </View>
-              <View style={[styles.headCell, { flex: 1.15 }]}>
-                <Text style={styles.headTitle}>TAXABLE SERVICES</Text>
-                <Text style={styles.headSub}>Description · SAC · Taxable amount</Text>
-              </View>
-            </View>
-            <View style={styles.sheetBody}>
-              <View style={[styles.col, { flex: 1 }]}>
-                {reimbursements.length === 0 ? (
-                  <View style={styles.itemRow}>
-                    <Text style={[styles.itemTitle, { color: MUTED }]}>-</Text>
-                  </View>
-                ) : (
-                  reimbursements.map((item, index) => (
-                    <View key={`r-${index}`} style={styles.itemRow}>
-                      <View style={styles.itemDesc}>
-                        <Text style={styles.itemTitle}>{item.description}</Text>
-                        {index === 0 && lead ? (
-                          <Text style={styles.itemSub}>Lead Pax: {lead}</Text>
-                        ) : null}
-                        {index === 0 && trip ? <Text style={styles.itemSub}>{trip}</Text> : null}
-                      </View>
-                      <Text style={styles.itemAmt}>{money(lineTaxable(item), currency)}</Text>
-                    </View>
-                  ))
-                )}
-              </View>
-              <View style={styles.colSplit} />
-              <View style={[styles.col, { flex: 1.15 }]}>
-                {taxableItems.length === 0 ? (
-                  <View style={styles.itemRow}>
-                    <Text style={[styles.svcDesc, styles.itemTitle, { color: MUTED }]}>-</Text>
-                    <Text style={styles.svcSac}>-</Text>
-                    <Text style={styles.svcAmt}>{money(0, currency)}</Text>
-                  </View>
-                ) : (
-                  taxableItems.map((item, index) => (
-                    <View key={`t-${index}`} style={styles.itemRow}>
-                      <Text style={[styles.svcDesc, styles.itemTitle]}>{item.description}</Text>
-                      <Text style={styles.svcSac}>{clean(item.hsnCode) || '-'}</Text>
-                      <Text style={styles.svcAmt}>{money(lineTaxable(item), currency)}</Text>
-                    </View>
-                  ))
-                )}
-                <View style={styles.taxRow}>
-                  <Text style={styles.taxLabel}>IGST</Text>
-                  <Text style={styles.svcSac}>{igstRate}</Text>
-                  <Text style={styles.svcAmt}>{money(invoice.igstTotal || 0, currency)}</Text>
-                </View>
-                <View style={styles.taxRow}>
-                  <Text style={styles.taxLabel}>CGST</Text>
-                  <Text style={styles.svcSac}>{halfRate}</Text>
-                  <Text style={styles.svcAmt}>{money(invoice.cgstTotal || 0, currency)}</Text>
-                </View>
-                <View style={styles.taxRow}>
-                  <Text style={styles.taxLabel}>SGST</Text>
-                  <Text style={styles.svcSac}>{halfRate}</Text>
-                  <Text style={styles.svcAmt}>{money(invoice.sgstTotal || 0, currency)}</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.sheetFoot}>
-              <View style={[styles.footCell, { flex: 1 }]}>
-                <Text style={styles.footLabel}>Total reimbursement</Text>
-                <Text style={styles.footValue}>{money(reimbTotal, currency)}</Text>
-              </View>
-              <View style={styles.colSplit} />
-              <View style={[styles.footCell, { flex: 1.15 }]}>
-                <Text style={styles.footLabel}>Total amount after tax</Text>
-                <Text style={styles.footValue}>{money(afterTax, currency)}</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.summary}>
-            <View style={styles.sumRow}>
-              <Text style={styles.sumLabel}>Gross total</Text>
-              <Text style={styles.sumValue}>{money(invoice.grandTotal, currency)}</Text>
-            </View>
-            <View style={styles.sumRow}>
-              <Text style={styles.sumLabel}>Discount provided</Text>
-              <Text style={styles.sumValue}>{money(invoice.discountTotal || 0, currency)}</Text>
-            </View>
-            {invoice.amountPaid > 0 ? (
-              <View style={styles.sumRow}>
-                <Text style={styles.sumLabel}>Amount received</Text>
-                <Text style={styles.sumValue}>{money(invoice.amountPaid, currency)}</Text>
-              </View>
-            ) : null}
-            <View style={styles.netRow}>
-              <Text style={styles.netLabel}>NET RECEIVABLE</Text>
-              <Text style={styles.netValue}>{money(net, currency)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.lower}>
-            <View style={styles.lowerCol}>
-              <Text style={styles.blockKicker}>COMPANY DETAILS</Text>
-              <Text style={styles.blockName}>{brand}</Text>
-              <Text style={styles.blockLine}>PAN: {companyPan || '-'}</Text>
-              {companyLines.map((line) => (
-                <Text key={`c-${line}`} style={styles.blockLine}>
-                  {line}
-                </Text>
-              ))}
-              <Text style={styles.blockLine}>
-                {[cin ? `CIN: ${cin}` : '', `GSTIN: ${companyGst || '-'}`].filter(Boolean).join('   ·   ')}
-              </Text>
-            </View>
-            <View style={styles.lowerCol}>
-              <Text style={styles.blockKicker}>CONTACT</Text>
-              {contactName ? <Text style={styles.blockName}>{contactName}</Text> : null}
-              {phone ? <Text style={styles.blockLine}>Phone: {phone}</Text> : null}
-              {website ? <Text style={styles.blockLine}>{website}</Text> : null}
-              {email ? <Text style={styles.blockLine}>{email}</Text> : null}
-              <View style={styles.sign}>
-                <Text style={styles.forLine}>For {brand}</Text>
-                {clean(company?.signatureUrl) ? (
-                  <Image src={clean(company?.signatureUrl)} style={styles.signImg} />
-                ) : (
-                  <View style={styles.signGap} />
-                )}
-                <Text style={styles.signLabel}>Authorised signatory</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.payBox}>
-            <Text style={styles.payLabel}>PAYMENT</Text>
-            <Text style={styles.payLine}>
-              Payable by bank transfer or demand draft in favour of {payableTo}
-              {city ? `, ${city}` : ''}.
+          <View style={styles.subHead}>
+            <Text style={[styles.subCell, { flex: 1.55 }]}>Description of Reimbursements</Text>
+            <Text style={[styles.subCell, { flex: 0.85, textAlign: 'right' }]}>Amount</Text>
+            <Text style={[styles.subCell, { flex: 1.55, borderLeftWidth: 0.6, borderLeftColor: BORDER }]}>
+              Description of Services
             </Text>
-            {bankBits.length ? <Text style={styles.payLine}>{bankBits.join('   ·   ')}</Text> : null}
+            <Text style={[styles.subCell, { flex: 0.65, textAlign: 'center' }]}>SAC CODE</Text>
+            <Text style={[styles.subCell, { flex: 0.85, textAlign: 'right' }]}>Taxable Amount</Text>
           </View>
 
-          {clean(invoice.notes) ? (
-            <Text style={styles.note}>Note: {clean(invoice.notes)}</Text>
-          ) : null}
+          <View style={styles.bodyRow}>
+            <View style={styles.bodyHalf}>
+              {reimbursements.length === 0 ? (
+                <View style={styles.lineRow}>
+                  <Text style={styles.descCol}>-</Text>
+                  <Text style={styles.amtCol}>{moneyInr(0)}</Text>
+                </View>
+              ) : (
+                reimbursements.map((item, index) => (
+                  <View key={`r-${index}`} style={styles.lineRow}>
+                    <View style={styles.descCol}>
+                      <Text style={styles.itemMain}>{item.description}</Text>
+                      {index === 0 && packageRef ? (
+                        <Text style={styles.itemSub}>({packageRef.toLowerCase()})</Text>
+                      ) : null}
+                      {index === 0 && leadPax ? (
+                        <Text style={styles.itemSub}>Lead Pax: {leadPax}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.amtCol}>{moneyInr(lineTaxable(item))}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+            <View style={styles.bodyHalfLast}>
+              {taxableItems.length === 0 ? (
+                <View style={styles.lineRow}>
+                  <Text style={[styles.descCol, { flex: 1.55 }]}>-</Text>
+                  <Text style={styles.sacCol}>-</Text>
+                  <Text style={styles.amtCol}>{moneyInr(0)}</Text>
+                </View>
+              ) : (
+                taxableItems.map((item, index) => (
+                  <View key={`t-${index}`} style={styles.lineRow}>
+                    <Text style={[styles.descCol, styles.itemMain]}>{item.description}</Text>
+                    <Text style={styles.sacCol}>{clean(item.hsnCode) || '-'}</Text>
+                    <Text style={styles.amtCol}>{moneyInr(lineTaxable(item))}</Text>
+                  </View>
+                ))
+              )}
+              <View style={styles.taxRow}>
+                <Text style={styles.taxName}>IGST</Text>
+                <Text style={styles.taxPct}>{igstPct}</Text>
+                <Text style={styles.taxAmt}>{moneyInr(invoice.igstTotal || 0)}</Text>
+              </View>
+              <View style={styles.taxRow}>
+                <Text style={styles.taxName}>CGST</Text>
+                <Text style={styles.taxPct}>{halfPct}</Text>
+                <Text style={styles.taxAmt}>{moneyInr(invoice.cgstTotal || 0)}</Text>
+              </View>
+              <View style={styles.taxRow}>
+                <Text style={styles.taxName}>SGST</Text>
+                <Text style={styles.taxPct}>{halfPct}</Text>
+                <Text style={styles.taxAmt}>{moneyInr(invoice.sgstTotal || 0)}</Text>
+              </View>
+            </View>
+          </View>
 
-          {registered ? (
-            <Text style={styles.addressLine}>Registered address: {registered}</Text>
-          ) : null}
-          <Text style={styles.disclaimer}>
-            This is a system-generated invoice. No signature is required.
+          <View style={styles.footRow}>
+            <View style={styles.footHalf}>
+              <Text style={styles.footLabel}>Total Reimbursement Amount</Text>
+              <Text style={styles.footValue}>{moneyInr(reimbTotal)}</Text>
+            </View>
+            <View style={styles.footHalfLast}>
+              <Text style={styles.footLabel}>Total Amount After Tax</Text>
+              <Text style={styles.footValue}>{moneyInr(afterTax)}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.totalsBlock}>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Gross Total</Text>
+            <Text style={styles.totalValue}>{moneyInr(invoice.grandTotal)}</Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Discount Provided</Text>
+            <Text style={styles.totalValue}>{moneyInr(invoice.discountTotal || 0)}</Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Net Receivable</Text>
+            <Text style={styles.totalValue}>{moneyInr(net)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.lower}>
+          <View style={styles.lowerCol}>
+            <Text style={styles.sectionTitle}>COMPANY DETAILS</Text>
+            <Text style={[styles.lowerLine, { fontWeight: 700 }]}>{brandUpper}</Text>
+            {companyPan ? <Text style={styles.lowerLine}>PAN : {companyPan}</Text> : null}
+            {companyAddress ? <Text style={styles.lowerLine}>Reg. Address : {companyAddress}</Text> : null}
+            <Text style={styles.lowerLine}>
+              {[cin ? `CIN : ${cin}` : '', companyGst ? `GSTIN : ${companyGst}` : '']
+                .filter(Boolean)
+                .join('            ')}
+            </Text>
+          </View>
+          <View style={styles.lowerCol}>
+            <Text style={styles.sectionTitle}>CONTACT INFORMATION</Text>
+            {contactName ? <Text style={[styles.lowerLine, { fontWeight: 700 }]}>{contactName.toUpperCase()}</Text> : null}
+            {phone ? <Text style={styles.lowerLine}>Phone : {phone}</Text> : null}
+            {website ? <Text style={styles.lowerLine}>{website}</Text> : null}
+            {email ? <Text style={styles.lowerLine}>{email}</Text> : null}
+            <View style={styles.signBlock}>
+              <Text style={styles.forLine}>FOR {brandUpper}</Text>
+              {clean(company?.signatureUrl) ? (
+                <Image src={clean(company?.signatureUrl)} style={styles.signImg} />
+              ) : (
+                <View style={styles.signSpace} />
+              )}
+              <Text style={styles.signLabel}>Authorised Signatory</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.payBanner}>
+          <Text style={styles.payText}>
+            PAYMENT TO BE MADE BY BANK TRANSFER/DD MADE PAYABLE TO {payableTo} AT {payCity.toUpperCase()}
           </Text>
         </View>
+
+        {companyAddress ? (
+          <View style={styles.addrBlock}>
+            <Text style={styles.addrLine}>Corporate Address :</Text>
+            <Text style={styles.addrLine}>{companyAddress}</Text>
+            <Text style={[styles.addrLine, { marginTop: 4 }]}>Registered Address :</Text>
+            <Text style={styles.addrLine}>{companyAddress}</Text>
+          </View>
+        ) : null}
+
+        <Text style={styles.disclaimer}>
+          *** This is system generated invoice no signature required. ***
+        </Text>
       </Page>
     </Document>
   );

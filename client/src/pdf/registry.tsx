@@ -16,13 +16,6 @@ export interface TemplateOption {
 
 export const TEMPLATES: TemplateOption[] = [
   {
-    id: 'safarmate',
-    name: 'Tax Invoice',
-    description: 'GST bill with reimbursement, service charges, and your company details.',
-    accent: 'from-[#16324F] to-[#1F8A9B]',
-    render: ({ invoice, company }) => <TaxInvoiceTemplate invoice={invoice} company={company} />,
-  },
-  {
     id: 'heritage',
     name: 'Heritage',
     description: 'Boutique gold-trimmed travel-agency classic.',
@@ -50,8 +43,20 @@ export const TEMPLATES: TemplateOption[] = [
     accent: 'from-emerald-500 to-teal-400',
     render: ({ invoice, company }) => <TravelTemplate invoice={invoice} company={company} />,
   },
+  {
+    id: 'safarmate-tax',
+    name: 'Safarmate Tax Invoice',
+    description: 'GST tax invoice with reimbursement and service-charge columns (Safarmate layout).',
+    accent: 'from-[#16324F] to-[#1F8A9B]',
+    render: ({ invoice, company }) => <TaxInvoiceTemplate invoice={invoice} company={company} />,
+  },
 ];
 
 export function getTemplate(id: string): TemplateOption {
-  return TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0];
+  const normalized = id === 'safarmate' ? 'safarmate-tax' : id;
+  return (
+    TEMPLATES.find((t) => t.id === normalized) ??
+    TEMPLATES.find((t) => t.id === 'heritage') ??
+    TEMPLATES[0]
+  );
 }
