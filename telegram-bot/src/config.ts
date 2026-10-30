@@ -3,7 +3,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: join(__dir, '../.env') });
+/** override: true so telegram-bot/.env wins over stale shell exports (e.g. partial allow list). */
+dotenv.config({ path: join(__dir, '../.env'), override: true });
 
 function req(name: string): string {
   const v = process.env[name]?.trim();
