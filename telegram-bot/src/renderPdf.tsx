@@ -8,7 +8,10 @@ import { getTemplate } from '@/pdf/registry';
 import { config } from './config.js';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const defaultLogo = join(__dir, '../../../client/public/brand/safarmate-logo.png');
+const logoPdf = join(__dir, '../../../client/public/brand/safarmate-logo-pdf.png');
+const defaultLogo = existsSync(logoPdf)
+  ? logoPdf
+  : join(__dir, '../../../client/public/brand/safarmate-logo.png');
 
 export async function renderInvoicePdf(
   invoice: Invoice,
@@ -20,8 +23,14 @@ export async function renderInvoicePdf(
   if (config.publicAppUrl) {
     process.env.SAFARMATE_PUBLIC_URL = config.publicAppUrl;
   }
+  process.env.SAFARMATE_TELEGRAM_PDF = '1';
   const template = getTemplate(invoice.template);
   const doc = template.render({ invoice, company });
-  const buf = await renderToBuffer(doc);
+  const buf = await Promise.race([
+    renderToBuffer(doc),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('PDF render timed out (90s)')), 90_000);
+    }),
+  ]);
   return Buffer.from(buf);
 }

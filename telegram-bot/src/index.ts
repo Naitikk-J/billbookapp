@@ -10,8 +10,10 @@ import {
 import { bootstrapBot } from './bootstrap.js';
 import { buildNewInvoiceBody } from './buildInvoicePayload.js';
 import { fetchWithRetry } from './http.js';
+import { invoiceForPdf } from './invoiceForPdf.js';
 import { parseFlightPdfLocal } from './parseFlightPdfLocal.js';
 import { renderInvoicePdf } from './renderPdf.js';
+import { sendPdfToChat } from './sendPdf.js';
 import {
   getSession,
   resetSession,
@@ -20,7 +22,7 @@ import {
 } from './session.js';
 import { BOT_TEMPLATES, needsTravelFields, templateById } from './templates.js';
 
-const bot = new Telegraf(config.botToken);
+const bot = new Telegraf(config.botToken, { handlerTimeout: 300_000 });
 
 function mainMenu() {
   return Markup.keyboard([
@@ -224,7 +226,8 @@ async function confirmNewBill(ctx: Context, chatId: number, draft: NewBillDraft)
 }
 
 async function finalizeNewBill(ctx: Context, chatId: number, draft: NewBillDraft) {
-  await ctx.reply('Creating bill…');
+  const statusMsg = await ctx.reply('Creating bill…');
+  let savedLabel = '';
   try {
     const customer = await createCustomer({
       name: draft.customerName,
@@ -232,17 +235,38 @@ async function finalizeNewBill(ctx: Context, chatId: number, draft: NewBillDraft
     });
     const body = buildNewInvoiceBody(draft, customer._id);
     const created = await createInvoice(body);
+    savedLabel = String(created.number ?? created._id ?? '');
+    await ctx.telegram
+      .editMessageText(chatId, statusMsg.message_id, undefined, 'Generating PDF…')
+      .catch(() => {});
     const company = await getCompany();
-    const pdf = await renderInvoicePdf(created as unknown as Invoice, company as unknown as Company);
-    await ctx.replyWithDocument(
-      { source: pdf, filename: `safarmate-${created.number || created._id}.pdf` },
-      { caption: `✅ ${draft.templateName}\n${created.number ?? ''}\nSaved in Safarmate.` }
+    const pdf = await renderInvoicePdf(
+      invoiceForPdf(created),
+      company as unknown as Company
     );
+    await ctx.telegram
+      .editMessageText(chatId, statusMsg.message_id, undefined, 'Uploading PDF to chat…')
+      .catch(() => {});
+    await sendPdfToChat(
+      ctx,
+      pdf,
+      `safarmate-${created.number || created._id}.pdf`,
+      `✅ ${draft.templateName}\n${created.number ?? ''}\nSaved in Safarmate.`
+    );
+    await ctx.telegram.deleteMessage(chatId, statusMsg.message_id).catch(() => {});
     resetSession(chatId);
     await ctx.reply('Done. Menu:', mainMenu());
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await ctx.reply(`Failed: ${msg.slice(0, 400)}`);
+    if (savedLabel) {
+      await ctx.reply(
+        `Bill ${savedLabel} saved in Safarmate (Invoices in app).\n\nPDF upload failed:\n${msg.slice(0, 350)}`,
+        mainMenu()
+      );
+      resetSession(chatId);
+    } else {
+      await ctx.reply(`Failed: ${msg.slice(0, 400)}`, mainMenu());
+    }
   }
 }
 
@@ -261,6 +285,7 @@ bot.on('document', async (ctx) => {
   }
 
   const statusMsg = await ctx.reply('Downloading ticket…');
+  let savedInvoiceLabel = '';
   try {
     const file = await ctx.telegram.getFile(doc.file_id);
     if (!file.file_path) throw new Error('Could not download file from Telegram');
@@ -276,7 +301,10 @@ bot.on('document', async (ctx) => {
       'Reading ticket (local)…'
     ).catch(() => {});
 
-    const { draft, extraction } = await parseFlightPdfLocal(buffer, name);
+    const [{ draft, extraction }, company] = await Promise.all([
+      parseFlightPdfLocal(buffer, name),
+      getCompany(),
+    ]);
 
     await ctx.telegram.editMessageText(
       ctx.chat!.id,
@@ -287,6 +315,8 @@ bot.on('document', async (ctx) => {
 
     const invoice = await saveFlightDraft(draft as unknown as Record<string, unknown>);
     const travel = (draft.travelDetails ?? {}) as Record<string, unknown>;
+    const invLabel = String(invoice.number ?? invoice._id ?? '');
+    savedInvoiceLabel = invLabel;
 
     await ctx.telegram.editMessageText(
       ctx.chat!.id,
@@ -295,21 +325,43 @@ bot.on('document', async (ctx) => {
       'Generating PDF…'
     ).catch(() => {});
 
-    const company = await getCompany();
-    const pdf = await renderInvoicePdf(invoice as unknown as Invoice, company as unknown as Company);
-    const fmt = extraction?.format?.replace(/_/g, ' ') ?? 'PDF';
-    await ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
-    await ctx.replyWithDocument(
-      { source: pdf, filename: `safarmate-voucher-${travel.bookingId ?? invoice._id}.pdf` },
-      {
-        caption: `✅ Safarmate bill from ${fmt}\n${invoice.number ?? ''}\nSaved — check Invoices in app.`,
-      }
+    console.log('[telegram-bot] rendering voucher for', invLabel);
+    const pdf = await renderInvoicePdf(
+      invoiceForPdf(invoice),
+      company as unknown as Company
     );
+    console.log('[telegram-bot] render done', pdf.length, 'bytes');
+
+    await ctx.telegram.editMessageText(
+      ctx.chat!.id,
+      statusMsg.message_id,
+      undefined,
+      'Uploading PDF to chat…'
+    ).catch(() => {});
+
+    const fmt = extraction?.format?.replace(/_/g, ' ') ?? 'PDF';
+    const filename = `safarmate-voucher-${travel.bookingId ?? invoice._id}.pdf`;
+    await sendPdfToChat(
+      ctx,
+      pdf,
+      filename,
+      `✅ Safarmate bill from ${fmt}\n${invLabel}\nSaved — check Invoices in app.`
+    );
+
+    await ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
     resetSession(ctx.chat!.id);
     await ctx.reply('Sent in chat. Need another?', mainMenu());
   } catch (err) {
+    console.error('[telegram-bot] PDF flow error:', err);
     const msg = err instanceof Error ? err.message : String(err);
-    await ctx.reply(`Could not process PDF:\n${msg.slice(0, 500)}`, mainMenu());
+    if (savedInvoiceLabel) {
+      await ctx.reply(
+        `Bill ${savedInvoiceLabel} is saved in Safarmate — check Invoices in the app.\n\nPDF could not be sent on Telegram:\n${msg.slice(0, 350)}`,
+        mainMenu()
+      );
+    } else {
+      await ctx.reply(`Could not process PDF:\n${msg.slice(0, 500)}`, mainMenu());
+    }
     resetSession(ctx.chat!.id);
   }
 });

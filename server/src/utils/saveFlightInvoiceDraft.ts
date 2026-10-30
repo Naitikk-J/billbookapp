@@ -15,6 +15,13 @@ function resolveTemplateId(raw?: string): InvoiceTemplateId {
   return id;
 }
 
+function pickDisplayName(...names: Array<string | undefined | null>): string {
+  return names
+    .map((n) => (n ?? '').trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)[0] ?? '';
+}
+
 function matchCustomerId(
   name: string,
   customers: Array<{ _id: unknown; name: string }>
@@ -71,8 +78,15 @@ export async function saveFlightInvoiceDraft(
     ? customers.find((c) => String(c._id) === customerId)
     : null;
 
+  const travellerFromDraft = pickDisplayName(
+    typeof draft.travelDetails?.travellerName === 'string'
+      ? draft.travelDetails.travellerName
+      : '',
+    hint.name
+  );
+
   if (!customer) {
-    const name = (hint.name ?? '').trim() || 'Flight customer';
+    const name = travellerFromDraft || 'Flight customer';
     customer = await Customer.create({
       companyId,
       name,
@@ -85,6 +99,11 @@ export async function saveFlightInvoiceDraft(
     customerId = String(customer._id);
   } else {
     customerId = String(customer._id);
+    const bestName = pickDisplayName(travellerFromDraft, customer.name);
+    if (bestName && bestName.length > customer.name.trim().length) {
+      await Customer.updateOne({ _id: customer._id }, { $set: { name: bestName } });
+      customer = { ...customer, name: bestName };
+    }
   }
 
   const templateId = resolveTemplateId(draft.template);
@@ -99,8 +118,9 @@ export async function saveFlightInvoiceDraft(
       : undefined,
   };
 
+  const snapshotName = pickDisplayName(travellerFromDraft, customer.name);
   const customerCtx = {
-    name: customer.name,
+    name: snapshotName,
     state: customer.state,
     gstNumber: customer.gstNumber,
     panNumber: customer.panNumber,
@@ -121,7 +141,7 @@ export async function saveFlightInvoiceDraft(
     currency: draft.currency || 'INR',
     template: templateId,
     customerSnapshot: {
-      name: customer.name,
+      name: snapshotName,
       email: customer.email,
       phone: customer.phone,
       gstNumber: customer.gstNumber,

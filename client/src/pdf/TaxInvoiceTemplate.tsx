@@ -1,5 +1,6 @@
 import { Document, Image, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Company, Invoice, InvoiceLineItem } from '@/lib/types';
+import { safarmateLogoUrl } from './shared';
 
 const BORDER = '#333333';
 const INK = '#111111';
@@ -229,11 +230,7 @@ function lineTaxable(item: InvoiceLineItem): number {
 }
 
 function safarmateLogoSrc(): string {
-  const path = '/brand/safarmate-logo.png';
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${path}`;
-  }
-  return path;
+  return safarmateLogoUrl();
 }
 
 function websiteLabel(website?: string): string {
@@ -259,7 +256,10 @@ export function TaxInvoiceTemplate({
   const brand = clean(company?.legalName) || clean(company?.name) || 'Safarmate';
   const brandUpper = brand.toUpperCase();
   const customer = invoice.customerSnapshot ?? {};
-  const customerName = clean(customer.name) || '-';
+  const td = invoice.travelDetails ?? {};
+  const customerName =
+    [clean(customer.name), clean(td.travellerName)].filter(Boolean).sort((a, b) => b.length - a.length)[0] ||
+    '-';
   const customerAddress = joinAddress(customer);
   const customerState = clean(customer.state);
   const customerGst = clean(customer.gstNumber);

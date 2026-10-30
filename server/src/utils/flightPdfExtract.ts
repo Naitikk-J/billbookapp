@@ -111,7 +111,8 @@ function splitSmushedCapsName(raw: string): string {
       if (/[AEIOU]/i.test(p)) score += 1;
       if (/[^AEIOU]{5,}/i.test(p)) score -= 4;
     }
-    score -= Math.max(0, parts.length - 8) * 4;
+    score -= Math.max(0, parts.length - 10) * 2;
+    if (parts.length >= 2 && parts.length <= 6) score += 2;
     return score;
   };
 
@@ -155,21 +156,65 @@ function humanizePassenger(raw: string): string {
     .join(' ');
 }
 
+/** Keep every word from the ticket — prefer the longest cleaned candidate. */
+function pickLongestPassengerName(...candidates: Array<string | undefined | null>): string {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const c of candidates) {
+    if (!c?.trim()) continue;
+    const n = humanizePassenger(c);
+    if (!n) continue;
+    const key = n.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(n);
+  }
+  return normalized.sort((a, b) => b.length - a.length)[0] ?? '';
+}
+
+function parseAirIndiaPassengerName(flat: string, raw: string, fileName?: string): string {
+  const fromFile = passengerNameFromFileName(fileName);
+
+  const slash =
+    flat.match(/PASSENGER:\s*([A-Z]+)\/([A-Z\s]+?)(?:\(ADT\)|\(CHD\)|\(INF\)|\s|$)/i) ??
+    raw.match(/PASSENGER:\s*([A-Z]+)\/([A-Z\s]+?)(?:\(ADT\)|\(CHD\)|\(INF\)|\s|$)/i);
+  const slashName = slash
+    ? humanizePassenger(`${slash[2].trim()} ${slash[1].trim()}`)
+    : '';
+
+  const spaced =
+    flat.match(/PASSENGER:\s*([A-Z][A-Z\s.'-]+)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1]?.trim() ??
+    raw.match(/PASSENGER:\s*([A-Z][A-Z\s.'-]+)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1]?.trim() ??
+    '';
+
+  const compact =
+    flat.match(/PASSENGER:\s*([A-Z]{8,})(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1] ??
+    '';
+
+  const smushed = compact && !compact.includes(' ') ? splitSmushedCapsName(compact) : '';
+
+  const section = extractPassengerNameFromSection(
+    raw.match(/Passenger\s*Name([\s\S]{0,400})/i)?.[1] ?? flat.slice(0, 800)
+  );
+
+  return pickLongestPassengerName(fromFile, slashName, spaced, smushed, section);
+}
+
 /** Prefer the longest plausible passenger line from a ticket block. */
 function extractPassengerNameFromSection(section: string): string {
   const block = section.slice(0, 600);
   const titled = block.match(
-    /(?:Mr\.?|Mrs\.?|Ms\.?|Mstr\.?|Master\.?|Miss\.?)\s+([A-Za-z]+(?:[\s.-]+[A-Za-z]+){0,7})/i
+    /(?:Mr\.?|Mrs\.?|Ms\.?|Mstr\.?|Master\.?|Miss\.?)\s+([A-Za-z]+(?:[\s.-]+[A-Za-z]+){0,12})/i
   );
   if (titled) return humanizePassenger(titled[1]);
 
-  const numbered = block.match(/\d+\.\s*(?:Mr\.?|Mrs\.?|Ms\.?|Mstr\.?)?\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+){0,7})/i);
+  const numbered = block.match(/\d+\.\s*(?:Mr\.?|Mrs\.?|Ms\.?|Mstr\.?)?\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+){0,12})/i);
   if (numbered) return humanizePassenger(numbered[1]);
 
-  const capsWords = block.match(/\b([A-Z]{2,}(?:\s+[A-Z]{2,}){1,7})\b/);
+  const capsWords = block.match(/\b([A-Z]{2,}(?:\s+[A-Z]{2,}){1,12})\b/);
   if (capsWords) return humanizePassenger(capsWords[1]);
 
-  const titleCase = block.match(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+){1,7})\b/);
+  const titleCase = block.match(/\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]+){1,12})\b/);
   if (titleCase) return humanizePassenger(titleCase[1]);
 
   return '';
@@ -202,11 +247,13 @@ function detectFormat(flat: string, raw: string): FlightPdfFormat {
 function passengerNameFromFileName(fileName?: string): string {
   if (!fileName) return '';
   const base = fileName.replace(/\.pdf$/i, '').split(/[/\\]/).pop() ?? '';
-  const m = base.match(/-\s*([A-Za-z]+(?:\s+[A-Za-z]+)+)\s*$/);
+  const m =
+    base.match(/-\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+)+)\s*$/) ??
+    base.match(/\(\s*[A-Z0-9]+\s*\)\s*-\s*([A-Za-z]+(?:[\s.-]+[A-Za-z]+)+)\s*$/i);
   return m ? humanizePassenger(cleanPdfWhitespace(m[1])) : '';
 }
 
-function parseAirIndia(flat: string, fileName?: string): FlightPdfExtraction {
+function parseAirIndia(flat: string, raw: string, fileName?: string): FlightPdfExtraction {
   const charges = emptyFlightBillCharges();
   charges.currency = 'INR';
 
@@ -214,18 +261,7 @@ function parseAirIndia(flat: string, fileName?: string): FlightPdfExtraction {
   charges.pnr = pnr;
   charges.bookingId = pnr;
 
-  const passengerSpaced =
-    flat.match(/PASSENGER:\s*([A-Z][A-Z\s.'-]{2,}?)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1] ?? '';
-  const passengerCompact =
-    flat.match(/PASSENGER:\s*([A-Z]+)(?:\(ADT\)|\(CHD\)|\(INF\))/i)?.[1] ?? '';
-  const fromFile = passengerNameFromFileName(fileName);
-  if (fromFile) {
-    charges.billToName = fromFile;
-  } else if (passengerSpaced.includes(' ')) {
-    charges.billToName = humanizePassenger(passengerSpaced);
-  } else if (passengerCompact) {
-    charges.billToName = splitSmushedCapsName(passengerCompact);
-  }
+  charges.billToName = parseAirIndiaPassengerName(flat, raw, fileName);
 
   charges.issuedDate = flat.match(/Dateofissue:\s*(\d{1,2}[A-Za-z]{3}\d{4})/i)?.[1] ?? '';
 
@@ -269,7 +305,7 @@ function parseAirIndia(flat: string, fileName?: string): FlightPdfExtraction {
   return { format: 'air_india_eticket', segments, charges, rawTextLength: flat.length };
 }
 
-function parseIndigo(flat: string, raw: string): FlightPdfExtraction {
+function parseIndigo(flat: string, raw: string, fileName?: string): FlightPdfExtraction {
   const charges = emptyFlightBillCharges();
   const pnr =
     (flat.match(/PNR\/Booking Reference\s*([A-Z0-9]{6})/i)?.[1] ??
@@ -277,14 +313,17 @@ function parseIndigo(flat: string, raw: string): FlightPdfExtraction {
   charges.pnr = pnr;
   charges.bookingId = pnr;
 
-  const paxSection = raw.match(/Passenger Information([\s\S]{0,500})/i)?.[1] ?? '';
-  charges.billToName = extractPassengerNameFromSection(paxSection);
-  if (!charges.billToName) {
-    const dupName =
-      raw.match(/Passenger Information[\s\S]{0,120}?([a-z]{3,})\1+/i)?.[1] ??
-      raw.match(/\b([a-z]{3,})\1+\b/i)?.[1];
-    if (dupName) charges.billToName = humanizePassenger(dedupeRepeatedNameToken(dupName));
-  }
+  const paxSection = raw.match(/Passenger Information([\s\S]{0,800})/i)?.[1] ?? '';
+  const fromSection = extractPassengerNameFromSection(paxSection);
+  const dupName =
+    raw.match(/Passenger Information[\s\S]{0,120}?([a-z]{3,})\1+/i)?.[1] ??
+    raw.match(/\b([a-z]{3,})\1+\b/i)?.[1];
+  const fromDup = dupName ? humanizePassenger(dedupeRepeatedNameToken(dupName)) : '';
+  charges.billToName = pickLongestPassengerName(
+    fromSection,
+    fromDup,
+    passengerNameFromFileName(fileName)
+  );
 
   const sector = flat.match(/\b([A-Z]{3})-([A-Z]{3})\b/);
   const flight = flat.match(/\b(6E)\s*(\d{3,4})\b/i);
@@ -329,7 +368,7 @@ function parseSafarmateVoucherDateTime(
   return { date: `${m[2]} ${m[3]} ${m[4]}`, time: cleanPdfWhitespace(m[5]) };
 }
 
-function parseSafarmateVoucher(raw: string): FlightPdfExtraction {
+function parseSafarmateVoucher(raw: string, fileName?: string): FlightPdfExtraction {
   const charges = emptyFlightBillCharges();
   const flat = flattenPdfText(raw);
 
@@ -337,14 +376,17 @@ function parseSafarmateVoucher(raw: string): FlightPdfExtraction {
   charges.bookingId = (raw.match(/Booking\s*Id\s*:\s*([A-Z0-9]+)/i)?.[1] ?? charges.pnr).toUpperCase();
   charges.issuedDate = cleanPdfWhitespace(raw.match(/Issued\s*Date\s*:\s*([^\n]+)/i)?.[1] ?? '');
 
-  const passengerBlock = raw.match(/Passenger\s*Name([\s\S]{0,280})/i)?.[1] ?? '';
-  charges.billToName = extractPassengerNameFromSection(passengerBlock);
-  if (!charges.billToName) {
-    const passengerMatch = raw.match(
-      /Passenger\s*Name[\s\S]*?\d+\.\s*(?:Ms|Mr|Mrs|Mstr)\.?\s*([A-Za-z]+(?:[\t ]+[A-Za-z]+)+)/i
-    );
-    charges.billToName = passengerMatch ? humanizePassenger(passengerMatch[1]) : '';
-  }
+  const passengerBlock = raw.match(/Passenger\s*Name([\s\S]{0,500})/i)?.[1] ?? '';
+  const fromSection = extractPassengerNameFromSection(passengerBlock);
+  const passengerMatch = raw.match(
+    /Passenger\s*Name[\s\S]*?\d+\.\s*(?:Ms|Mr|Mrs|Mstr)\.?\s*([A-Za-z]+(?:[\t ]+[A-Za-z]+)+)/i
+  );
+  const fromList = passengerMatch ? humanizePassenger(passengerMatch[1]) : '';
+  charges.billToName = pickLongestPassengerName(
+    fromSection,
+    fromList,
+    passengerNameFromFileName(fileName)
+  );
 
   const segments: NormalisedFlight[] = [];
   const flightSectionRe =
@@ -408,7 +450,7 @@ function parseSafarmateVoucher(raw: string): FlightPdfExtraction {
   return { format: 'safarmate_voucher', segments: finalSegments, charges, rawTextLength: raw.length };
 }
 
-function parseGeneric(flat: string, raw: string): FlightPdfExtraction {
+function parseGeneric(flat: string, raw: string, fileName?: string): FlightPdfExtraction {
   const charges = emptyFlightBillCharges();
   charges.pnr =
     (flat.match(/PNR[:\s/]+([A-Z0-9]{6})/i)?.[1] ??
@@ -417,6 +459,11 @@ function parseGeneric(flat: string, raw: string): FlightPdfExtraction {
 
   const total = flat.match(/Total(?:\s*Amount)?[:\s]+INR\s*([\d,]+)/i)?.[1]?.replace(/,/g, '');
   if (total) charges.grandTotal = Number(total) || 0;
+
+  charges.billToName = pickLongestPassengerName(
+    extractPassengerNameFromSection(raw.slice(0, 1200)),
+    passengerNameFromFileName(fileName)
+  );
 
   const segments: NormalisedFlight[] = [];
   const flightRe =
@@ -443,11 +490,11 @@ export function extractFromFlightPdfText(rawText: string, fileName?: string): Fl
   const flat = flattenPdfText(rawText);
   const format = detectFormat(flat, rawText);
 
-  if (format === 'air_india_eticket') return parseAirIndia(flat, fileName);
-  if (format === 'indigo_itinerary') return parseIndigo(flat, rawText);
-  if (format === 'safarmate_voucher') return parseSafarmateVoucher(rawText);
+  if (format === 'air_india_eticket') return parseAirIndia(flat, rawText, fileName);
+  if (format === 'indigo_itinerary') return parseIndigo(flat, rawText, fileName);
+  if (format === 'safarmate_voucher') return parseSafarmateVoucher(rawText, fileName);
 
-  const generic = parseGeneric(flat, rawText);
+  const generic = parseGeneric(flat, rawText, fileName);
   if (generic.segments.length > 0) return generic;
 
   return generic;

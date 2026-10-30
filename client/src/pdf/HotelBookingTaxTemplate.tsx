@@ -1,6 +1,6 @@
 import { Document, Image, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Company, Invoice, InvoiceLineItem } from '@/lib/types';
-import { fmt, fmtDate } from './shared';
+import { fmt, fmtDate, safarmateLogoUrl } from './shared';
 
 const INK = '#111111';
 const MUTED = '#444444';
@@ -123,11 +123,7 @@ function clean(value?: string | null): string {
 }
 
 function safarmateLogoSrc(): string {
-  const path = '/brand/safarmate-logo.png';
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${path}`;
-  }
-  return path;
+  return safarmateLogoUrl();
 }
 
 function fmtStayDate(value?: string | null): string {
