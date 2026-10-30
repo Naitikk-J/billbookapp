@@ -2,7 +2,15 @@ import { config } from '../config.js';
 import { fetchWithRetry } from '../http.js';
 
 export type ApiCompany = Record<string, unknown> & { _id: string; name?: string };
-export type ApiCustomer = { _id: string; name: string; phone?: string; email?: string; city?: string };
+export type ApiCustomer = {
+  _id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  gstNumber?: string;
+  kind?: string;
+};
 export type ApiInvoice = Record<string, unknown> & { _id: string; template: string; number: string };
 
 let cachedToken: string | null = null;
@@ -61,37 +69,234 @@ export async function getCompany(): Promise<ApiCompany> {
   return data.company;
 }
 
+async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await apiFetch(path, init);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${init.method ?? 'GET'} ${path} failed (${res.status}): ${text.slice(0, 240)}`);
+  }
+  return (await res.json()) as T;
+}
+
 export async function createCustomer(input: {
   name: string;
   phone?: string;
   email?: string;
   city?: string;
+  gstNumber?: string;
 }): Promise<ApiCustomer> {
-  const res = await apiFetch('/api/customers', {
+  const data = await apiJson<{ customer: ApiCustomer }>('/api/customers', {
     method: 'POST',
     body: JSON.stringify({
       name: input.name,
       phone: input.phone ?? '',
       email: input.email ?? '',
       city: input.city ?? '',
+      gstNumber: input.gstNumber ?? '',
     }),
   });
-  if (!res.ok) throw new Error(`Create customer failed (${res.status})`);
-  const data = (await res.json()) as { customer: ApiCustomer };
   return data.customer;
 }
 
+export async function listCustomers(q = ''): Promise<ApiCustomer[]> {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : '';
+  const data = await apiJson<{ customers: ApiCustomer[] }>(`/api/customers${qs}`);
+  return data.customers ?? [];
+}
+
+export async function patchCustomer(id: string, body: Record<string, unknown>): Promise<ApiCustomer> {
+  const data = await apiJson<{ customer: ApiCustomer }>(`/api/customers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return data.customer;
+}
+
+export async function deleteCustomer(id: string): Promise<void> {
+  await apiJson(`/api/customers/${id}`, { method: 'DELETE' });
+}
+
+export async function findOrCreateCustomer(input: {
+  name: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  gstNumber?: string;
+}): Promise<{ customer: ApiCustomer; created: boolean }> {
+  const matches = await listCustomers(input.name);
+  const exact = matches.find((c) => c.name.trim().toLowerCase() === input.name.trim().toLowerCase());
+  if (exact) {
+    const patch: Record<string, string> = {};
+    if (input.phone && !exact.phone) patch.phone = input.phone;
+    if (input.email && !exact.email) patch.email = input.email;
+    if (input.city && !exact.city) patch.city = input.city;
+    if (input.gstNumber && !exact.gstNumber) patch.gstNumber = input.gstNumber;
+    if (Object.keys(patch).length > 0) {
+      return { customer: await patchCustomer(exact._id, patch), created: false };
+    }
+    return { customer: exact, created: false };
+  }
+  return { customer: await createCustomer(input), created: true };
+}
+
 export async function createInvoice(body: Record<string, unknown>): Promise<ApiInvoice> {
-  const res = await apiFetch('/api/invoices', {
+  const data = await apiJson<{ invoice: ApiInvoice }>('/api/invoices', {
     method: 'POST',
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Create invoice failed (${res.status}): ${text.slice(0, 300)}`);
-  }
-  const data = (await res.json()) as { invoice: ApiInvoice };
   return data.invoice;
+}
+
+export type InvoiceListItem = {
+  _id: string;
+  number?: string;
+  status?: string;
+  kind?: string;
+  grandTotal?: number;
+  balanceDue?: number;
+  amountPaid?: number;
+  template?: string;
+  customerSnapshot?: { name?: string };
+  travelDetails?: { destination?: string; bookingId?: string };
+};
+
+export async function listInvoices(q = '', limit = 8): Promise<InvoiceListItem[]> {
+  const params = new URLSearchParams({ view: 'summary', limit: String(limit) });
+  if (q) params.set('q', q);
+  const data = await apiJson<{ invoices: InvoiceListItem[] }>(`/api/invoices?${params}`);
+  return data.invoices ?? [];
+}
+
+export async function getInvoice(id: string): Promise<ApiInvoice> {
+  const data = await apiJson<{ invoice: ApiInvoice }>(`/api/invoices/${id}`);
+  return data.invoice;
+}
+
+export async function deleteInvoice(id: string): Promise<void> {
+  await apiJson(`/api/invoices/${id}`, { method: 'DELETE' });
+}
+
+export async function addInvoicePayment(
+  id: string,
+  body: { amount: number; method: string; note?: string; reference?: string }
+): Promise<ApiInvoice> {
+  const data = await apiJson<{ invoice: ApiInvoice }>(`/api/invoices/${id}/payments`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return data.invoice;
+}
+
+export async function invoiceStats(): Promise<{
+  today: { revenue: number };
+  month: { revenue: number; count: number };
+  pending: { total: number; count: number };
+  paidCount: number;
+}> {
+  return apiJson('/api/invoices/stats');
+}
+
+export type LedgerAccount = {
+  _id: string;
+  name: string;
+  phone?: string;
+  balance: number;
+  kind?: string;
+};
+
+export async function ledgerSummary(): Promise<{
+  accounts: LedgerAccount[];
+  totals: { netReceivable: number; netPayable: number; accountsCount: number };
+}> {
+  return apiJson('/api/ledger/summary');
+}
+
+export type LedgerEntryRow = {
+  _id: string;
+  kind: 'payment' | 'credit';
+  amount: number;
+  note?: string;
+  method?: string;
+  date?: string;
+};
+
+export async function ledgerDetail(customerId: string): Promise<{
+  customer: { _id: string; name: string; phone?: string; openingBalance?: number };
+  entries: LedgerEntryRow[];
+  totals: { totalPayment: number; totalCredit: number; balance: number };
+}> {
+  return apiJson(`/api/ledger/${customerId}`);
+}
+
+export async function addLedgerEntry(
+  customerId: string,
+  body: { kind: 'payment' | 'credit'; amount: number; method?: string; note?: string }
+): Promise<void> {
+  await apiJson(`/api/ledger/${customerId}/entries`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteLedgerEntry(id: string): Promise<void> {
+  await apiJson(`/api/ledger/entries/${id}`, { method: 'DELETE' });
+}
+
+export type ApiProduct = {
+  _id: string;
+  name: string;
+  price: number;
+  taxPercent?: number;
+  hsnCode?: string;
+  unit?: string;
+};
+
+export async function listProducts(q = ''): Promise<ApiProduct[]> {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : '';
+  const data = await apiJson<{ products: ApiProduct[] }>(`/api/products${qs}`);
+  return data.products ?? [];
+}
+
+export async function createProduct(body: {
+  name: string;
+  price: number;
+  taxPercent?: number;
+  hsnCode?: string;
+  unit?: string;
+}): Promise<ApiProduct> {
+  const data = await apiJson<{ product: ApiProduct }>('/api/products', {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'service', unit: 'pax', ...body }),
+  });
+  return data.product;
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  await apiJson(`/api/products/${id}`, { method: 'DELETE' });
+}
+
+export type ApiFlight = {
+  _id: string;
+  pnr?: string;
+  airline?: string;
+  flightNumber?: string;
+  fromAirport?: string;
+  toAirport?: string;
+  status?: string;
+  passengers?: Array<{ name?: string }>;
+};
+
+export async function listFlights(): Promise<ApiFlight[]> {
+  const data = await apiJson<{ flights: ApiFlight[] }>('/api/flights');
+  return data.flights ?? [];
+}
+
+export async function patchFlight(id: string, body: { status: string }): Promise<void> {
+  await apiJson(`/api/flights/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export async function deleteFlight(id: string): Promise<void> {
+  await apiJson(`/api/flights/${id}`, { method: 'DELETE' });
 }
 
 function draftToInvoiceBody(draft: Record<string, unknown>, customerId: string) {
