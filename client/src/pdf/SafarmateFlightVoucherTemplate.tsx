@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { Document, Image, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Company, Invoice, TravelDetails } from '@/lib/types';
+import { barcodeDataUrl, sectorBarcodeValue } from './barcodeDataUrl';
 import { fmtDate } from './shared';
 
 const INK = '#1a1a1a';
@@ -91,6 +93,45 @@ const styles = StyleSheet.create({
   termsTitle: { marginTop: 14, fontSize: 9, fontWeight: 700 },
   termsLine: { fontSize: 7.5, color: MUTED, lineHeight: 1.4, marginTop: 3 },
   thanks: { marginTop: 10, fontSize: 9, fontWeight: 700, textAlign: 'center', color: ACCENT },
+  travellerSection: {
+    marginTop: 14,
+    borderWidth: 0.8,
+    borderColor: BORDER,
+  },
+  travellerHead: {
+    flexDirection: 'row',
+    backgroundColor: '#E8F4F6',
+    borderBottomWidth: 0.8,
+    borderBottomColor: BORDER,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  travellerHeadCell: { flex: 1, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
+  travellerHeadBarcode: { width: 140, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
+  travellerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderBottomWidth: 0.6,
+    borderBottomColor: BORDER,
+  },
+  travellerRowLast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  travellerNameCol: { flex: 1, fontSize: 9, fontWeight: 700 },
+  travellerSectorCol: { flex: 1, fontSize: 9, fontWeight: 700 },
+  barcodeImg: { width: 130, height: 32, objectFit: 'contain' },
+  barcodePlaceholder: {
+    width: 130,
+    height: 32,
+    backgroundColor: '#F0F0F0',
+    borderWidth: 0.5,
+    borderColor: BORDER,
+  },
 });
 
 function safarmateLogoSrc(): string {
@@ -194,7 +235,26 @@ export function SafarmateFlightVoucherTemplate({
   const bookingId = clean(td.bookingId) || pnr;
   const passenger =
     clean(td.travellerName) || clean(invoice.customerSnapshot?.name) || 'Passenger';
-  const segments = segmentsFromInvoice(invoice);
+  const segments = useMemo(() => segmentsFromInvoice(invoice), [invoice]);
+
+  const sectorBarcodes = useMemo(() => {
+    return segments.map((seg, idx) => {
+      const from = clean(seg.fromAirport) || clean(seg.fromCity);
+      const to = clean(seg.toAirport) || clean(seg.toCity);
+      const payload = sectorBarcodeValue(pnr !== '—' ? pnr : bookingId, from, to);
+      return {
+        key: `${from}-${to}-${idx}`,
+        sectorLabel: from && to ? `${from}-${to}` : sectorCode(seg),
+        payload,
+        src: barcodeDataUrl(payload, { height: 34, lineWidth: 1.05 }),
+      };
+    });
+  }, [segments, pnr, bookingId]);
+
+  const pnrBarcodeSrc = useMemo(
+    () => barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 }),
+    [pnr, bookingId]
+  );
 
   return (
     <Document>
@@ -225,12 +285,22 @@ export function SafarmateFlightVoucherTemplate({
 
         <Text style={styles.sectionTitle}>Passenger</Text>
         <View style={styles.passengerBox}>
-          <Text style={styles.passengerName}>1. {passenger}</Text>
-          {invoice.number && invoice.number !== 'DRAFT' ? (
-            <Text style={{ fontSize: 8, color: MUTED, marginTop: 4 }}>
-              Voucher ref: {invoice.number}
-            </Text>
-          ) : null}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.passengerName}>1. {passenger}</Text>
+              {invoice.number && invoice.number !== 'DRAFT' ? (
+                <Text style={{ fontSize: 8, color: MUTED, marginTop: 4 }}>
+                  Voucher ref: {invoice.number}
+                </Text>
+              ) : null}
+            </View>
+            {pnrBarcodeSrc ? (
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 7, color: MUTED, marginBottom: 2 }}>PNR barcode</Text>
+                <Image src={pnrBarcodeSrc} style={{ width: 100, height: 26, objectFit: 'contain' }} />
+              </View>
+            ) : null}
+          </View>
         </View>
 
         {segments.map((seg, idx) => (
@@ -271,6 +341,35 @@ export function SafarmateFlightVoucherTemplate({
             </View>
           </View>
         ))}
+
+        {sectorBarcodes.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>Traveller details</Text>
+            <View style={styles.travellerSection}>
+              <View style={styles.travellerHead}>
+                <Text style={styles.travellerHeadCell}>Pax name</Text>
+                <Text style={styles.travellerHeadCell}>Segment</Text>
+                <Text style={styles.travellerHeadBarcode}>Barcode</Text>
+              </View>
+              {sectorBarcodes.map((row, idx) => (
+                <View
+                  key={row.key}
+                  style={
+                    idx === sectorBarcodes.length - 1 ? styles.travellerRowLast : styles.travellerRow
+                  }
+                >
+                  <Text style={styles.travellerNameCol}>{passenger}</Text>
+                  <Text style={styles.travellerSectorCol}>{row.sectorLabel}</Text>
+                  {row.src ? (
+                    <Image src={row.src} style={styles.barcodeImg} />
+                  ) : (
+                    <View style={styles.barcodePlaceholder} />
+                  )}
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
 
         <Text style={styles.termsTitle}>Terms &amp; conditions</Text>
         <Text style={styles.termsLine}>
