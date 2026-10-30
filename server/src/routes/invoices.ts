@@ -23,11 +23,11 @@ const router = Router();
 router.use(requireAuth, requireCompany);
 
 const lineItemSchema = z.object({
-  description: z.string().min(1).max(500),
+  description: z.string().max(500).optional().default(''),
   hsnCode: z.string().max(200).optional().default(''),
-  quantity: z.number().min(0),
+  quantity: z.number().min(0).optional().default(0),
   unit: z.string().max(40).optional().default('pax'),
-  rate: z.number().min(0),
+  rate: z.number().min(0).optional().default(0),
   taxPercent: z.number().min(0).max(100).optional().default(0),
   discountPercent: z.number().min(0).max(100).optional().default(0),
 });
@@ -55,6 +55,7 @@ const travelSchema = z
     transactionalCategory: z.string().max(40).optional().default(''),
     transactionalDetails: z.string().max(40).optional().default(''),
     serviceDescription: z.string().max(500).optional().default(''),
+    flightSegments: z.array(z.record(z.unknown())).max(20).optional().default([]),
   })
   .partial()
   .optional();
@@ -67,7 +68,7 @@ const invoiceSchema = z.object({
   dueDate: z.string().datetime().optional().or(z.literal('')),
   currency: z.string().max(10).optional().default('INR'),
   template: z.string().max(40).optional().default('modern'),
-  items: z.array(lineItemSchema).min(1),
+  items: z.array(lineItemSchema).max(200).optional().default([]),
   travelDetails: travelSchema,
   notes: z.string().max(4000).optional().default(''),
   terms: z.string().max(4000).optional().default(''),

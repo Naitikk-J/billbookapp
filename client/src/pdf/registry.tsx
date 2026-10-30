@@ -1,6 +1,7 @@
 import type { Company, Invoice } from '@/lib/types';
 import { TaxInvoiceTemplate } from './TaxInvoiceTemplate';
 import { HotelBookingTaxTemplate } from './HotelBookingTaxTemplate';
+import { SafarmateFlightVoucherTemplate } from './SafarmateFlightVoucherTemplate';
 import { HeritageTemplate } from './HeritageTemplate';
 import { ModernTemplate } from './ModernTemplate';
 import { ClassicTemplate } from './ClassicTemplate';
@@ -58,6 +59,15 @@ export const TEMPLATES: TemplateOption[] = [
     accent: 'from-[#1A6FD1] to-[#0D47A1]',
     render: ({ invoice, company }) => (
       <HotelBookingTaxTemplate invoice={invoice} company={company} />
+    ),
+  },
+  {
+    id: 'safarmate-flight-voucher',
+    name: 'Safarmate Flight Voucher',
+    description: 'Customer flight voucher (PNR, sectors, Safarmate logo) — share with travellers.',
+    accent: 'from-[#1F8A9B] to-[#16324F]',
+    render: ({ invoice, company }) => (
+      <SafarmateFlightVoucherTemplate invoice={invoice} company={company} />
     ),
   },
 ];

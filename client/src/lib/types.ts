@@ -148,6 +148,45 @@ export interface CustomerSnapshot {
   postalCode?: string;
 }
 
+export interface FlightInvoiceDraft {
+  template: string;
+  kind: InvoiceKind;
+  currency: string;
+  taxMode: 'intra' | 'inter' | 'none';
+  customerHint: {
+    name: string;
+    phone: string;
+    email: string;
+    gstNumber: string;
+    city: string;
+  };
+  matchedCustomerId: string | null;
+  travelDetails: TravelDetails;
+  items: Array<{
+    description: string;
+    hsnCode: string;
+    quantity: number;
+    unit: string;
+    rate: number;
+    taxPercent: number;
+    discountPercent: number;
+  }>;
+  notes: string;
+  sourceFileName: string;
+  segments: Array<{
+    pnr: string;
+    flightNumber: string;
+    airline: string;
+    fromCity: string;
+    fromAirport: string;
+    toCity: string;
+    toAirport: string;
+    departureAt: string | null;
+    arrivalAt: string | null;
+    passengers: Array<{ name: string; seat: string; cabin: string }>;
+  }>;
+}
+
 export interface TravelDetails {
   bookingType?: 'hotel' | 'flight';
   packageName?: string;
@@ -170,6 +209,18 @@ export interface TravelDetails {
   transactionalCategory?: string;
   transactionalDetails?: string;
   serviceDescription?: string;
+  flightSegments?: Array<{
+    pnr?: string;
+    flightNumber?: string;
+    airline?: string;
+    fromCity?: string;
+    fromAirport?: string;
+    toCity?: string;
+    toAirport?: string;
+    departureAt?: string | null;
+    arrivalAt?: string | null;
+    passengers?: Array<{ name: string; seat?: string; cabin?: string }>;
+  }>;
 }
 
 export interface Payment {

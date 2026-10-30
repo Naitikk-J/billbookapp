@@ -26,6 +26,7 @@ export interface TravelDetailsInput {
   transactionalCategory?: string;
   transactionalDetails?: string;
   serviceDescription?: string;
+  flightSegments?: unknown[];
 }
 
 export interface CustomerTravelContext {
@@ -128,6 +129,7 @@ function buildNormalizedRecord(
     transactionalCategory,
     transactionalDetails,
     serviceDescription,
+    flightSegments: Array.isArray(td.flightSegments) ? td.flightSegments : [],
   };
 }
 
@@ -143,32 +145,8 @@ export function normalizeTravelDetails(
 }
 
 export function validateTravelForTemplate(
-  template: InvoiceTemplateId,
-  travel: ReturnType<typeof normalizeTravelDetails>
+  _template: InvoiceTemplateId,
+  _travel: ReturnType<typeof normalizeTravelDetails>
 ): string | null {
-  if (template !== BOOKING_TAX_TEMPLATE) return null;
-
-  const bookingType = (travel.bookingType as BookingType) || 'hotel';
-
-  if (bookingType === 'flight') {
-    if (!clean(travel.flight as string)) {
-      return 'Flight booking template requires flight details (airline / route).';
-    }
-    if (!travel.startDate) {
-      return 'Flight booking template requires a departure date.';
-    }
-    return null;
-  }
-
-  const hotelName = clean(travel.hotel as string);
-  if (!hotelName) {
-    return 'Hotel booking template requires a hotel name.';
-  }
-  if (!travel.startDate) {
-    return 'Hotel booking template requires a check-in date.';
-  }
-  if (!travel.endDate) {
-    return 'Hotel booking template requires a check-out date.';
-  }
   return null;
 }

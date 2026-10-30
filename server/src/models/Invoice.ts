@@ -2,7 +2,7 @@ import { Schema, model, Types, type InferSchemaType, type HydratedDocument } fro
 
 const lineItemSchema = new Schema(
   {
-    description: { type: String, required: true, trim: true },
+    description: { type: String, default: '', trim: true },
     hsnCode: { type: String, default: '' },
     quantity: { type: Number, required: true, min: 0, default: 1 },
     unit: { type: String, default: 'pax' },
@@ -37,6 +37,7 @@ const travelDetailsSchema = new Schema(
     transactionalCategory: { type: String, default: '' },
     transactionalDetails: { type: String, default: 'RG' },
     serviceDescription: { type: String, default: '' },
+    flightSegments: { type: [Schema.Types.Mixed], default: [] },
   },
   { _id: false }
 );

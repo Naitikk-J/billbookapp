@@ -14,6 +14,7 @@ import {
   BookOpen,
   Sparkles,
   PlaneTakeoff,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Brand } from './Brand';
 import { ThemeToggle } from './ThemeToggle';
@@ -35,6 +36,7 @@ import {
 const nav = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/app/flights', label: 'Flight status', icon: PlaneTakeoff, end: false },
+  { to: '/app/flight-invoices', label: 'Flight invoices', icon: FileSpreadsheet, end: false },
   { to: '/app/invoices', label: 'Invoices', icon: FileText, end: false },
   { to: '/app/ledger', label: 'Ledger', icon: BookOpen, end: false },
   { to: '/app/customers', label: 'Customers', icon: Users, end: false },

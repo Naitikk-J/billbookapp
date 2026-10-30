@@ -5,6 +5,7 @@ export const INVOICE_TEMPLATE_IDS = [
   'travel',
   'safarmate-tax',
   'hotel-booking-tax',
+  'safarmate-flight-voucher',
 ] as const;
 
 export type InvoiceTemplateId = (typeof INVOICE_TEMPLATE_IDS)[number];
@@ -13,7 +14,7 @@ export interface InvoiceTemplateMeta {
   id: InvoiceTemplateId;
   name: string;
   description: string;
-  category: 'general' | 'gst' | 'hotel';
+  category: 'general' | 'gst' | 'hotel' | 'flight';
 }
 
 export const INVOICE_TEMPLATES: InvoiceTemplateMeta[] = [
@@ -52,6 +53,12 @@ export const INVOICE_TEMPLATES: InvoiceTemplateMeta[] = [
     name: 'Travel Booking Tax Invoice',
     description: 'GST tax invoice for hotel or flight bookings — booking strip and payment breakup.',
     category: 'hotel',
+  },
+  {
+    id: 'safarmate-flight-voucher',
+    name: 'Safarmate Flight Voucher',
+    description: 'Customer flight voucher with sectors, PNR, and Safarmate branding.',
+    category: 'flight',
   },
 ];
 

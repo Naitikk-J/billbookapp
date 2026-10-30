@@ -355,18 +355,11 @@ export default function InvoiceBuilderPage() {
         }))
         .filter(
           (it) =>
-            it.description.length > 0 &&
-            Number.isFinite(it.quantity) &&
-            it.quantity > 0 &&
-            Number.isFinite(it.rate) &&
-            it.rate >= 0
+            it.description.length > 0 ||
+            (Number.isFinite(it.rate) && it.rate > 0) ||
+            (Number.isFinite(it.quantity) && it.quantity > 0) ||
+            (it.hsnCode ?? '').trim().length > 0
         );
-
-      if (cleanedItems.length === 0) {
-        throw new Error(
-          'Add at least one line item with a description, quantity > 0, and a rate.'
-        );
-      }
 
       const travelPayload = buildTravelPayload(values.template, values.travel);
       const travelDetails: Record<string, unknown> = {
@@ -656,11 +649,11 @@ export default function InvoiceBuilderPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-emerald-500" />
-                {isBookingTaxTemplate ? 'Booking details (hotel or flight)' : 'Travel details (optional)'}
+                {isBookingTaxTemplate ? 'Booking details (optional)' : 'Travel details (optional)'}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
                 {isBookingTaxTemplate
-                  ? 'Required for the travel booking tax PDF. Switch type to match hotel or flight bills.'
+                  ? 'All optional — fill what you have; the PDF shows only populated fields.'
                   : 'For travel packages, tours, and trips — shows up on the PDF.'}
               </p>
             </CardHeader>

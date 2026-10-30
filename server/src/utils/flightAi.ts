@@ -9,6 +9,11 @@ Inputs are real mail bodies from Indian OTAs and airlines:
 - Airlines: IndiGo (6E), Air India (AI), Air India Express (IX), Vistara (UK, legacy), SpiceJet (SG), Akasa Air (QP), Star Air (S5/OG), AIX Connect, Alliance Air (9I), Go First (G8, defunct), Air Asia India.
 Many of these mails are HTML-only and have heavy marketing / footer content. The actual flight block usually appears once and is short. Search the WHOLE body — confirmations from Goibibo / MMT / Cleartrip often bury the PNR, sector and times after a long banner. Tabular layouts ("From / To / Date / Flight / PNR / Departure / Arrival") are common — read them as columns.
 
+PDF inputs include airline e-tickets and itineraries, for example:
+- Air India "Web Booking eTicket" / ELECTRONIC TICKET ITINERARY: PASSENGER name, BOOKING REFERENCE (6 chars), TICKET NUMBER, multi-sector tables (AI128 LHR–BOM), TotalAmount in INR.
+- IndiGo goindigo.in itinerary printouts: "PNR/Booking Reference", passenger block, sectors like BOM–IXC with flight 6E #### and local departure/arrival times.
+- Agency vouchers (Safarmate / MMT style): PNR, separate Booking Id, Issued Date, DEL–SIN sector headers, Air India AI #### with terminals and HOLD/OK status.
+
 Given a flight ticket PDF or one such email body (any English including Indian English; possibly multi-segment), decide whether it describes a real flight booking or status update. If it does NOT (newsletter, deal alert, OTP, password reset, generic loyalty mail, hotel/rail/bus/cab booking, anything non-flight), return { "flights": [] } so the system can skip it. Do not invent data. Pull data only from what you can see.
 
 If it IS a flight email/ticket, return EVERY distinct flight segment under "flights" using these rules:
