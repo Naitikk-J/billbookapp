@@ -123,6 +123,8 @@ export default function SettingsPage() {
             <CardContent className="grid gap-4">
               <Field label="GSTIN"><Input {...form.register('gstNumber')} /></Field>
               <Field label="PAN"><Input {...form.register('panNumber')} /></Field>
+              <Field label="CIN / LLPIN"><Input {...form.register('cinNumber')} /></Field>
+              <Field label="Contact person"><Input placeholder="Shown on the tax invoice" {...form.register('contactName')} /></Field>
               <Field label="Address"><Textarea rows={2} {...form.register('address')} /></Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="City"><Input {...form.register('city')} /></Field>

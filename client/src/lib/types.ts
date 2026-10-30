@@ -16,6 +16,8 @@ export interface Company {
   website?: string;
   gstNumber?: string;
   panNumber?: string;
+  cinNumber?: string;
+  contactName?: string;
   address?: string;
   city?: string;
   state?: string;

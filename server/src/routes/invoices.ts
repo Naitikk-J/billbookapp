@@ -45,7 +45,7 @@ const invoiceSchema = z.object({
   issueDate: z.string().datetime().optional(),
   dueDate: z.string().datetime().optional().or(z.literal('')),
   currency: z.string().max(10).optional().default('INR'),
-  template: z.string().max(40).optional().default('modern'),
+  template: z.string().max(40).optional().default('safarmate'),
   items: z.array(lineItemSchema).min(1),
   travelDetails: travelSchema,
   notes: z.string().max(4000).optional().default(''),

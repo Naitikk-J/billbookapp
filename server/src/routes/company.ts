@@ -19,6 +19,8 @@ const updateSchema = z
     website: z.string().max(200),
     gstNumber: z.string().max(40),
     panNumber: z.string().max(40),
+    cinNumber: z.string().max(40),
+    contactName: z.string().max(120),
     address: z.string().max(500),
     city: z.string().max(120),
     state: z.string().max(120),

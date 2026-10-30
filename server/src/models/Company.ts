@@ -11,6 +11,8 @@ const companySchema = new Schema(
     website: { type: String, default: '' },
     gstNumber: { type: String, default: '', uppercase: true, trim: true },
     panNumber: { type: String, default: '', uppercase: true, trim: true },
+    cinNumber: { type: String, default: '', uppercase: true, trim: true },
+    contactName: { type: String, default: '', trim: true },
     address: { type: String, default: '' },
     city: { type: String, default: '' },
     state: { type: String, default: '' },

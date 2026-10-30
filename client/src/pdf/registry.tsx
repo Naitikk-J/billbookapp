@@ -1,4 +1,5 @@
 import type { Company, Invoice } from '@/lib/types';
+import { TaxInvoiceTemplate } from './TaxInvoiceTemplate';
 import { HeritageTemplate } from './HeritageTemplate';
 import { ModernTemplate } from './ModernTemplate';
 import { ClassicTemplate } from './ClassicTemplate';
@@ -14,6 +15,13 @@ export interface TemplateOption {
 }
 
 export const TEMPLATES: TemplateOption[] = [
+  {
+    id: 'safarmate',
+    name: 'Tax Invoice',
+    description: 'GST bill with reimbursement, service charges, and your company details.',
+    accent: 'from-[#16324F] to-[#1F8A9B]',
+    render: ({ invoice, company }) => <TaxInvoiceTemplate invoice={invoice} company={company} />,
+  },
   {
     id: 'heritage',
     name: 'Heritage',

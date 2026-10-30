@@ -54,7 +54,7 @@ const invoiceSchema = new Schema(
     issueDate: { type: Date, required: true, default: () => new Date() },
     dueDate: { type: Date },
     currency: { type: String, default: 'INR' },
-    template: { type: String, default: 'heritage' },
+    template: { type: String, default: 'safarmate' },
 
     customerSnapshot: {
       name: { type: String, default: '' },
