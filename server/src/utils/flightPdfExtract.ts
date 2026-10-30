@@ -394,10 +394,20 @@ function parseAirIndiaCapsPassenger(caps: string, fileName?: string): string {
   }
 
   if (core.length >= 8 && core.length <= 28) {
+    let bestSplit = '';
+    let bestScore = -1;
     for (let i = 4; i <= core.length - 4; i++) {
-      const joined = `${capsWord(core.slice(i))} ${capsWord(core.slice(0, i))}`;
-      if (isPlausiblePassengerName(joined)) return joined;
+      const a = capsWord(core.slice(0, i));
+      const b = capsWord(core.slice(i));
+      const joined = `${b} ${a}`;
+      if (!isPlausiblePassengerName(joined)) continue;
+      const score = Math.min(a.length, b.length);
+      if (score > bestScore) {
+        bestScore = score;
+        bestSplit = joined;
+      }
     }
+    if (bestSplit) return bestSplit;
   }
 
   const split = splitSmushedCapsName(core);
