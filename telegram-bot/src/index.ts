@@ -2,13 +2,15 @@ import { Telegraf, Markup, type Context } from 'telegraf';
 import type { Company, Invoice } from '@/lib/types';
 import { config, isChatAllowed } from './config.js';
 import {
+  saveFlightDraft,
   createCustomer,
   createInvoice,
   getCompany,
-  getInvoice,
-  parseFlightPdf,
 } from './api/safarmate.js';
+import { bootstrapBot } from './bootstrap.js';
 import { buildNewInvoiceBody } from './buildInvoicePayload.js';
+import { fetchWithRetry } from './http.js';
+import { parseFlightPdfLocal } from './parseFlightPdfLocal.js';
 import { renderInvoicePdf } from './renderPdf.js';
 import {
   getSession,
@@ -230,11 +232,11 @@ async function finalizeNewBill(ctx: Context, chatId: number, draft: NewBillDraft
     });
     const body = buildNewInvoiceBody(draft, customer._id);
     const created = await createInvoice(body);
-    const [company, invoice] = await Promise.all([getCompany(), getInvoice(created._id)]);
-    const pdf = await renderInvoicePdf(invoice as unknown as Invoice, company as unknown as Company);
+    const company = await getCompany();
+    const pdf = await renderInvoicePdf(created as unknown as Invoice, company as unknown as Company);
     await ctx.replyWithDocument(
-      { source: pdf, filename: `safarmate-${invoice.number || created._id}.pdf` },
-      { caption: `✅ ${draft.templateName}\n${invoice.number ?? ''}` }
+      { source: pdf, filename: `safarmate-${created.number || created._id}.pdf` },
+      { caption: `✅ ${draft.templateName}\n${created.number ?? ''}\nSaved in Safarmate.` }
     );
     resetSession(chatId);
     await ctx.reply('Done. Menu:', mainMenu());
@@ -258,48 +260,50 @@ bot.on('document', async (ctx) => {
     return;
   }
 
-  await ctx.reply('Reading ticket PDF…');
+  const statusMsg = await ctx.reply('Downloading ticket…');
   try {
     const file = await ctx.telegram.getFile(doc.file_id);
     if (!file.file_path) throw new Error('Could not download file from Telegram');
     const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
-    const res = await fetch(url);
+    const res = await fetchWithRetry(url, {}, { timeoutMs: 90_000 });
     if (!res.ok) throw new Error('Telegram file download failed');
     const buffer = Buffer.from(await res.arrayBuffer());
-    const base64 = buffer.toString('base64');
 
-    const { draft, extraction } = await parseFlightPdf(base64, name);
-    const hint = (draft.customerHint as { name?: string; phone?: string; email?: string; city?: string }) ?? {};
-    const customer = await createCustomer({
-      name: (hint.name ?? '').trim() || 'Flight customer',
-      phone: hint.phone,
-      email: hint.email,
-      city: hint.city,
-    });
+    await ctx.telegram.editMessageText(
+      ctx.chat!.id,
+      statusMsg.message_id,
+      undefined,
+      'Reading ticket (local)…'
+    ).catch(() => {});
 
+    const { draft, extraction } = await parseFlightPdfLocal(buffer, name);
+
+    await ctx.telegram.editMessageText(
+      ctx.chat!.id,
+      statusMsg.message_id,
+      undefined,
+      'Saving bill in Safarmate…'
+    ).catch(() => {});
+
+    const invoice = await saveFlightDraft(draft as unknown as Record<string, unknown>);
     const travel = (draft.travelDetails ?? {}) as Record<string, unknown>;
-    const segments = draft.segments as unknown[] | undefined;
-    const created = await createInvoice({
-      kind: draft.kind ?? 'invoice',
-      customerId: customer._id,
-      currency: draft.currency ?? 'INR',
-      template: draft.template ?? 'safarmate-flight-voucher',
-      taxMode: draft.taxMode ?? 'none',
-      issueDate: new Date().toISOString(),
-      notes: draft.notes ?? '',
-      items: draft.items ?? [],
-      travelDetails: {
-        ...travel,
-        flightSegments: segments ?? travel.flightSegments,
-      },
-    });
 
-    const [company, invoice] = await Promise.all([getCompany(), getInvoice(created._id)]);
+    await ctx.telegram.editMessageText(
+      ctx.chat!.id,
+      statusMsg.message_id,
+      undefined,
+      'Generating PDF…'
+    ).catch(() => {});
+
+    const company = await getCompany();
     const pdf = await renderInvoicePdf(invoice as unknown as Invoice, company as unknown as Company);
     const fmt = extraction?.format?.replace(/_/g, ' ') ?? 'PDF';
+    await ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
     await ctx.replyWithDocument(
-      { source: pdf, filename: `safarmate-voucher-${travel.bookingId ?? created._id}.pdf` },
-      { caption: `✅ Safarmate bill from ${fmt}\n${invoice.number ?? ''}` }
+      { source: pdf, filename: `safarmate-voucher-${travel.bookingId ?? invoice._id}.pdf` },
+      {
+        caption: `✅ Safarmate bill from ${fmt}\n${invoice.number ?? ''}\nSaved — check Invoices in app.`,
+      }
     );
     resetSession(ctx.chat!.id);
     await ctx.reply('Sent in chat. Need another?', mainMenu());
@@ -315,6 +319,7 @@ bot.catch((err) => {
 });
 
 console.log('[telegram-bot] starting…');
+void bootstrapBot();
 bot.launch().then(() => console.log('[telegram-bot] polling'));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));

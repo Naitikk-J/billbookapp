@@ -14,6 +14,9 @@ export function pdfPublicBaseUrl(): string {
 }
 
 export function safarmateLogoUrl(): string {
+  const localFile =
+    typeof process !== 'undefined' ? (process.env.SAFARMATE_LOGO_FILE ?? '').trim() : '';
+  if (localFile) return localFile;
   const base = pdfPublicBaseUrl();
   const path = '/brand/safarmate-logo.png';
   return base ? `${base}${path}` : path;

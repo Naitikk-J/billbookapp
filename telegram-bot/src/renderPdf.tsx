@@ -1,13 +1,22 @@
 import './reactGlobal.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { renderToBuffer } from '@react-pdf/renderer';
 import type { Company, Invoice } from '@/lib/types';
 import { getTemplate } from '@/pdf/registry';
 import { config } from './config.js';
 
+const __dir = dirname(fileURLToPath(import.meta.url));
+const defaultLogo = join(__dir, '../../../client/public/brand/safarmate-logo.png');
+
 export async function renderInvoicePdf(
   invoice: Invoice,
   company: Company | null
 ): Promise<Buffer> {
+  if (existsSync(defaultLogo)) {
+    process.env.SAFARMATE_LOGO_FILE = defaultLogo;
+  }
   if (config.publicAppUrl) {
     process.env.SAFARMATE_PUBLIC_URL = config.publicAppUrl;
   }

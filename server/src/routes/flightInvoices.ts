@@ -4,8 +4,9 @@ import { ApiError } from '../utils/ApiError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
-import { buildFlightInvoiceDraft } from '../utils/flightInvoiceDraft';
+import { buildFlightInvoiceDraft, type FlightInvoiceDraft } from '../utils/flightInvoiceDraft';
 import { extractFromFlightPdfBase64 } from '../utils/flightPdfExtract';
+import { saveFlightInvoiceDraft } from '../utils/saveFlightInvoiceDraft';
 
 const router = Router();
 router.use(requireAuth, requireCompany);
@@ -45,6 +46,29 @@ router.post(
         rawTextLength: extraction.rawTextLength,
       },
     });
+  })
+);
+
+const commitDraftSchema = z.object({
+  draft: z.record(z.unknown()),
+  status: z.enum(['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled']).optional(),
+});
+
+/** Save a flight voucher draft to DB (customer match/create + invoice) in one request. */
+router.post(
+  '/commit-draft',
+  validate(commitDraftSchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as z.infer<typeof commitDraftSchema>;
+    const draft = body.draft as unknown as FlightInvoiceDraft;
+    if (!draft?.items?.length && !draft?.travelDetails) {
+      throw ApiError.badRequest('Invalid flight draft');
+    }
+    const companyId = req.user!.companyId as string;
+    const invoice = await saveFlightInvoiceDraft(companyId, draft, {
+      status: body.status ?? 'sent',
+    });
+    res.status(201).json({ invoice });
   })
 );
 
