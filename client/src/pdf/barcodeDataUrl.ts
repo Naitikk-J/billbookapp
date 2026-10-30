@@ -61,6 +61,19 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
 }
 
 function rgbaToPngDataUrl(rgba: Uint8Array, width: number, height: number): string | null {
+  try {
+    const req = Function('return typeof require !== "undefined" ? require : null')() as
+      | ((id: string) => { PNG: { new (opts: { width: number; height: number }): { data: Uint8Array }; sync: { write: (png: { data: Uint8Array }) => Buffer } } })
+      | null;
+    const pngjs = req?.('pngjs');
+    if (pngjs) {
+      const png = new pngjs.PNG({ width, height });
+      png.data.set(rgba);
+      return `data:image/png;base64,${pngjs.PNG.sync.write(png).toString('base64')}`;
+    }
+  } catch {
+    // fall through to manual encoder
+  }
   let zlib: { deflateSync: (b: Uint8Array) => Uint8Array } | null = null;
   try {
     const req = Function('return typeof require !== "undefined" ? require : null')() as

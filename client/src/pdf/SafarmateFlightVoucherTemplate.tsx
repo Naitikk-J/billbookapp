@@ -4,7 +4,7 @@ import type { Company, Invoice, TravelDetails } from '@/lib/types';
 import { expandIndianState, formatAirportLine, formatSectorLabel } from '@/lib/airportNames';
 import { fmtDate, safarmateLogoUrl } from './shared';
 import { barcodeImageSrc } from './barcodeImageSrc';
-import { barcodeDataUrl, sectorBarcodeValue } from './barcodeDataUrl';
+import { barcodeDataUrl } from './barcodeDataUrl';
 
 const INK = '#1a1a1a';
 const MUTED = '#555555';
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   travellerHeadCell: { flex: 1, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
-  travellerHeadBarcode: { width: 140, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
+  travellerHeadBarcode: { width: 156, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
   travellerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -125,8 +125,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   travellerNameCol: { flex: 1, fontSize: 9, fontWeight: 700, flexWrap: 'wrap', lineHeight: 1.35 },
-  travellerSectorCol: { flex: 1, fontSize: 9, fontWeight: 700 },
-  barcodeImg: { width: 130, height: 32, objectFit: 'contain' },
+  travellerSectorCol: { flex: 1.3, fontSize: 8, fontWeight: 700, paddingRight: 8 },
+  barcodeCell: { width: 156, height: 36, justifyContent: 'center' },
+  barcodeImg: { width: 148, height: 28, objectFit: 'contain' },
   barcodePlaceholder: {
     width: 130,
     height: 32,
@@ -297,18 +298,11 @@ export function SafarmateFlightVoucherTemplate({
     if (snapshots.length === 0) {
       return { pnrSnapshot: null as string | null, sectorSnapshots: [] as string[] };
     }
-    const segCount = segments.length;
-    if (segCount > 1 && snapshots.length >= segCount) {
-      return {
-        pnrSnapshot: snapshots[0] ?? null,
-        sectorSnapshots: snapshots.slice(1, 1 + segCount),
-      };
-    }
     return {
       pnrSnapshot: snapshots[0] ?? null,
-      sectorSnapshots: snapshots.length > 1 ? snapshots.slice(1) : snapshots,
+      sectorSnapshots: snapshots,
     };
-  }, [snapshots, segments.length]);
+  }, [snapshots]);
 
   const travellerRows = useMemo(() => {
     const paxList = passengers;
@@ -320,18 +314,14 @@ export function SafarmateFlightVoucherTemplate({
     return paxList.flatMap((paxName, pi) =>
       segments.map((seg, si) => {
         let src: string | null = null;
-        if (perPaxBarcodes) src = snapshots[pi] ?? null;
-        else if (perSegBarcodes) src = sectorSnapshots[si] ?? snapshots[si] ?? null;
-        else if (paxList.length === 1 && segCount > 1) {
-          src = sectorSnapshots[si] ?? snapshots[si + 1] ?? snapshots[si] ?? null;
-        } else {
-          src = snapshots[pi] ?? sectorSnapshots[si] ?? snapshots[si] ?? null;
-        }
+        if (perPaxBarcodes && paxList.length > 1 && segCount === 1) src = snapshots[pi] ?? null;
+        else if (snapshots.length === 1) src = snapshots[0] ?? null;
+        else if (perSegBarcodes || paxList.length === 1) src = snapshots[si] ?? snapshots[0] ?? null;
+        else src = snapshots[Math.min(pi, snapshots.length - 1)] ?? null;
 
-        const generated = barcodeDataUrl(
-          sectorBarcodeValue(pnr !== '—' ? pnr : bookingId, seg.fromAirport ?? '', seg.toAirport ?? ''),
-          { height: 34, lineWidth: 1 }
-        );
+        const generated = src
+          ? null
+          : barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 36, lineWidth: 1.4 });
         return {
           key: `${pi}-${si}-${sectorHeading(seg)}`,
           paxName,
@@ -393,7 +383,7 @@ export function SafarmateFlightVoucherTemplate({
             {pnrBarcodeSrc ? (
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={{ fontSize: 7, color: MUTED, marginBottom: 2 }}>PNR barcode</Text>
-                <Image src={barcodeImageSrc(pnrBarcodeSrc)} style={{ width: 100, height: 26, objectFit: 'contain' }} />
+                <Image src={barcodeImageSrc(pnrBarcodeSrc)} style={{ width: 148, height: 28, objectFit: 'contain' }} />
               </View>
             ) : null}
           </View>
@@ -454,11 +444,13 @@ export function SafarmateFlightVoucherTemplate({
                 >
                   <Text style={styles.travellerNameCol}>{row.paxName}</Text>
                   <Text style={styles.travellerSectorCol}>{row.sectorLabel}</Text>
-                  {row.src ? (
-                    <Image src={barcodeImageSrc(row.src)} style={styles.barcodeImg} />
-                  ) : (
-                    <View style={styles.barcodePlaceholder} />
-                  )}
+                  <View style={styles.barcodeCell}>
+                    {row.src ? (
+                      <Image src={barcodeImageSrc(row.src)} style={styles.barcodeImg} />
+                    ) : (
+                      <View style={styles.barcodePlaceholder} />
+                    )}
+                  </View>
                 </View>
               ))}
             </View>

@@ -13,7 +13,14 @@ type PdfImage = {
   data: Uint8ClampedArray | Uint8Array;
 };
 
-type ScoredUrl = { url: string; score: number; page: number; kind: 'embedded' | 'render' };
+type ScoredUrl = {
+  url: string;
+  score: number;
+  page: number;
+  kind: 'embedded' | 'render';
+  width: number;
+  height: number;
+};
 
 function imageToRgba(img: PdfImage): Buffer | null {
   const { width, height } = img;
@@ -177,11 +184,13 @@ async function extractEmbeddedScored(
       const rgba = imageToRgba(img);
       if (!rgba) continue;
       const score = barcodeTransitionScore(rgba, img.width, img.height);
-      if (score < MIN_BARCODE_SCORE) continue;
+      const strip =
+        img.height <= 40 && img.width >= 100 && img.width / img.height >= 4;
+      if (score < (strip ? 8 : MIN_BARCODE_SCORE)) continue;
       const url = rgbaToPngDataUrl(rgba, img.width, img.height);
       if (urlSeen.has(url)) continue;
       urlSeen.add(url);
-      out.push({ url, score, page: p, kind: 'embedded' });
+      out.push({ url, score, page: p, kind: 'embedded', width: img.width, height: img.height });
     }
   }
 
@@ -234,7 +243,14 @@ async function extractRenderedScored(buffer: Buffer): Promise<ScoredUrl[]> {
         const cropCtx = cropCanvas.getContext('2d');
         cropCtx.drawImage(canvas, padX, band.y, cropW, band.h, 0, 0, cropW, band.h);
         const url = canvasToPngDataUrl(cropCanvas);
-        out.push({ url, score: band.score, page: p, kind: 'render' });
+        out.push({
+          url,
+          score: band.score,
+          page: p,
+          kind: 'render',
+          width: cropW,
+          height: band.h,
+        });
       }
     }
   } finally {
@@ -244,29 +260,27 @@ async function extractRenderedScored(buffer: Buffer): Promise<ScoredUrl[]> {
   return out;
 }
 
+/** Air India / IndiGo ticket barcodes are short, wide strips — not page banners. */
+function isStripBarcode(c: ScoredUrl): boolean {
+  if (c.height < 14 || c.height > 40) return false;
+  if (c.width < 100 || c.width > 900) return false;
+  return c.width / c.height >= 4;
+}
+
 function mergeScoredCandidates(embedded: ScoredUrl[], rendered: ScoredUrl[]): string[] {
   const urls: string[] = [];
   const seen = new Set<string>();
 
-  const embByPage = new Map<number, ScoredUrl[]>();
-  for (const c of embedded) {
-    const list = embByPage.get(c.page) ?? [];
-    list.push(c);
-    embByPage.set(c.page, list);
+  const strips = embedded.filter(isStripBarcode);
+  const pool = strips.length > 0 ? strips : embedded;
+  for (const c of pool) {
+    if (seen.has(c.url) || c.url.length < 400) continue;
+    seen.add(c.url);
+    urls.push(c.url);
+    if (urls.length >= 8) return urls;
   }
 
-  const embPages = [...embByPage.keys()].sort((a, b) => a - b);
-  for (const page of embPages) {
-    const list = (embByPage.get(page) ?? []).sort((a, b) => b.score - a.score);
-    for (const c of list) {
-      if (seen.has(c.url) || c.url.length < 12_000) continue;
-      seen.add(c.url);
-      urls.push(c.url);
-      break;
-    }
-  }
-
-  if (urls.length > 0) return urls.slice(0, 8);
+  if (urls.length > 0) return urls;
 
   const renByPage = new Map<number, ScoredUrl[]>();
   for (const c of rendered) {
@@ -279,7 +293,7 @@ function mergeScoredCandidates(embedded: ScoredUrl[], rendered: ScoredUrl[]): st
   for (const page of renPages) {
     const list = (renByPage.get(page) ?? []).sort((a, b) => b.score - a.score);
     const best = list[0];
-    if (!best || seen.has(best.url) || best.url.length < 12_000) continue;
+    if (!best || seen.has(best.url) || best.url.length < 400) continue;
     seen.add(best.url);
     urls.push(best.url);
     if (urls.length >= 8) break;
