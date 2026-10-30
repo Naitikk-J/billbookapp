@@ -1,5 +1,6 @@
 import type { Company, Invoice } from '@/lib/types';
 import { TaxInvoiceTemplate } from './TaxInvoiceTemplate';
+import { HotelBookingTaxTemplate } from './HotelBookingTaxTemplate';
 import { HeritageTemplate } from './HeritageTemplate';
 import { ModernTemplate } from './ModernTemplate';
 import { ClassicTemplate } from './ClassicTemplate';
@@ -49,6 +50,15 @@ export const TEMPLATES: TemplateOption[] = [
     description: 'GST tax invoice with reimbursement and service-charge columns (Safarmate layout).',
     accent: 'from-[#16324F] to-[#1F8A9B]',
     render: ({ invoice, company }) => <TaxInvoiceTemplate invoice={invoice} company={company} />,
+  },
+  {
+    id: 'hotel-booking-tax',
+    name: 'Hotel Booking Tax Invoice',
+    description: 'Accommodation tax invoice with booking strip, payment breakup, and QR slot.',
+    accent: 'from-[#1A6FD1] to-[#0D47A1]',
+    render: ({ invoice, company }) => (
+      <HotelBookingTaxTemplate invoice={invoice} company={company} />
+    ),
   },
 ];
 
