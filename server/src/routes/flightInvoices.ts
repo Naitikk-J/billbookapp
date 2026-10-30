@@ -6,6 +6,7 @@ import { requireAuth, requireCompany } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { buildFlightInvoiceDraft, type FlightInvoiceDraft } from '../utils/flightInvoiceDraft';
 import { extractFromFlightPdfBase64 } from '../utils/flightPdfExtract';
+import { extractBarcodeSnapshotsFromPdfBuffer } from '../utils/pdfBarcodeSnapshots';
 import { saveFlightInvoiceDraft } from '../utils/saveFlightInvoiceDraft';
 
 const router = Router();
@@ -24,7 +25,11 @@ router.post(
     const body = req.body as z.infer<typeof parsePdfSchema>;
     const base64 = body.base64.replace(/^data:.*?;base64,/, '');
 
-    const extraction = await extractFromFlightPdfBase64(base64, body.fileName);
+    const pdfBuffer = Buffer.from(base64, 'base64');
+    const [extraction, barcodeSnapshots] = await Promise.all([
+      extractFromFlightPdfBase64(base64, body.fileName),
+      extractBarcodeSnapshotsFromPdfBuffer(pdfBuffer).catch(() => [] as string[]),
+    ]);
 
     if (extraction.segments.length === 0) {
       throw ApiError.badRequest(
@@ -39,8 +44,16 @@ router.post(
       body.fileName
     );
 
+    if (barcodeSnapshots.length > 0) {
+      draft.travelDetails = {
+        ...draft.travelDetails,
+        barcodeSnapshots,
+      };
+    }
+
     res.json({
       draft,
+      barcodeSnapshots,
       extraction: {
         format: extraction.format,
         rawTextLength: extraction.rawTextLength,

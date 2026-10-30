@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   travellerHeadCell: { flex: 1, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
-  travellerHeadBarcode: { width: 156, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
+  travellerHeadBarcode: { width: 196, fontSize: 7.5, fontWeight: 700, color: MUTED, textTransform: 'uppercase' },
   travellerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -126,8 +126,8 @@ const styles = StyleSheet.create({
   },
   travellerNameCol: { flex: 1, fontSize: 9, fontWeight: 700, flexWrap: 'wrap', lineHeight: 1.35 },
   travellerSectorCol: { flex: 1.3, fontSize: 8, fontWeight: 700, paddingRight: 8 },
-  barcodeCell: { width: 156, height: 36, justifyContent: 'center' },
-  barcodeImg: { width: 148, height: 28, objectFit: 'contain' },
+  barcodeCell: { width: 196, height: 44, justifyContent: 'center' },
+  barcodeImg: { width: 188, height: 38, objectFit: 'contain' },
   barcodePlaceholder: {
     width: 130,
     height: 32,
@@ -311,17 +311,21 @@ export function SafarmateFlightVoucherTemplate({
     const perSegBarcodes =
       !perPaxBarcodes && snapshots.length >= segCount && paxList.length === 1;
 
+    const expected = paxList.length * segCount;
     return paxList.flatMap((paxName, pi) =>
       segments.map((seg, si) => {
         let src: string | null = null;
-        if (perPaxBarcodes && paxList.length > 1 && segCount === 1) src = snapshots[pi] ?? null;
+        if (snapshots.length === expected && expected > 0) src = snapshots[pi * segCount + si] ?? null;
+        else if (perPaxBarcodes && paxList.length > 1 && segCount === 1) src = snapshots[pi] ?? null;
         else if (snapshots.length === 1) src = snapshots[0] ?? null;
         else if (perSegBarcodes || paxList.length === 1) src = snapshots[si] ?? snapshots[0] ?? null;
-        else src = snapshots[Math.min(pi, snapshots.length - 1)] ?? null;
+        else if (snapshots.length === paxList.length) src = snapshots[pi] ?? null;
+        else if (snapshots.length > 0) src = snapshots[Math.min(pi * segCount + si, snapshots.length - 1)] ?? null;
 
-        const generated = src
-          ? null
-          : barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 36, lineWidth: 1.4 });
+        const generated =
+          src || snapshots.length > 0
+            ? null
+            : barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 36, lineWidth: 1.4 });
         return {
           key: `${pi}-${si}-${sectorHeading(seg)}`,
           paxName,
@@ -333,8 +337,12 @@ export function SafarmateFlightVoucherTemplate({
   }, [passengers, segments, snapshots, sectorSnapshots, pnr, bookingId]);
 
   const pnrBarcodeSrc = useMemo(
-    () => pnrSnapshot || barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 }),
-    [pnrSnapshot, pnr, bookingId]
+    () =>
+      pnrSnapshot ||
+      (snapshots.length > 0
+        ? null
+        : barcodeDataUrl(pnr !== '—' ? pnr : bookingId, { height: 28, lineWidth: 1.2 })),
+    [pnrSnapshot, snapshots.length, pnr, bookingId]
   );
 
   return (
@@ -382,8 +390,8 @@ export function SafarmateFlightVoucherTemplate({
             </View>
             {pnrBarcodeSrc ? (
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 7, color: MUTED, marginBottom: 2 }}>PNR barcode</Text>
-                <Image src={barcodeImageSrc(pnrBarcodeSrc)} style={{ width: 148, height: 28, objectFit: 'contain' }} />
+                <Text style={{ fontSize: 7, color: MUTED, marginBottom: 2 }}>Ticket barcode</Text>
+                <Image src={barcodeImageSrc(pnrBarcodeSrc)} style={{ width: 188, height: 38, objectFit: 'contain' }} />
               </View>
             ) : null}
           </View>

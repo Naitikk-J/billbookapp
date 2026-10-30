@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { join, dirname } from 'node:path';
 import { PNG } from 'pngjs';
+import { generatedIataBarcodeSnapshots } from './iataBcbpBarcode';
 
 const nodeRequire = createRequire(__filename);
 
@@ -302,8 +303,15 @@ function mergeScoredCandidates(embedded: ScoredUrl[], rendered: ScoredUrl[]): st
   return urls;
 }
 
-/** Pull barcode images from ticket PDF (embedded bitmaps + rendered strips, content-scored). */
+/** Pull barcode images from ticket PDF. Prefer a PDF417 redraw of the decoded IATA payload. */
 export async function extractBarcodeSnapshotsFromPdfBuffer(buffer: Buffer): Promise<string[]> {
+  try {
+    const generated = await generatedIataBarcodeSnapshots(buffer);
+    if (generated.length > 0) return generated;
+  } catch (err) {
+    console.warn('[barcode] IATA PDF417 decode failed:', err);
+  }
+
   const { getDocument, OPS } = await loadPdfJs();
   const data = new Uint8Array(buffer);
   const doc = await getDocument(pdfDocumentOptions(data)).promise;

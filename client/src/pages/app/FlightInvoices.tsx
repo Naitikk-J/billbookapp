@@ -126,9 +126,10 @@ export default function FlightInvoicesPage() {
   const parsePdf = useMutation({
     mutationFn: async (f: File) => {
       const base64 = await fileToBase64(f);
-      const [res, barcodeSnapshots] = await Promise.all([
+      const [res, localBarcodes] = await Promise.all([
         api.post<{
           draft: FlightInvoiceDraft;
+          barcodeSnapshots?: string[];
           extraction?: { format: string; rawTextLength: number };
         }>('/flight-invoices/parse-pdf', {
           fileName: f.name,
@@ -137,7 +138,11 @@ export default function FlightInvoicesPage() {
         }),
         extractBarcodeSnapshotsFromPdf(f).catch(() => [] as string[]),
       ]);
-      return { ...res.data, barcodeSnapshots };
+      const serverBarcodes = res.data.barcodeSnapshots ?? [];
+      return {
+        ...res.data,
+        barcodeSnapshots: serverBarcodes.length > 0 ? serverBarcodes : localBarcodes,
+      };
     },
     onSuccess: (data) => {
       const customers =
@@ -173,7 +178,7 @@ export default function FlightInvoicesPage() {
       const bc = data.barcodeSnapshots?.length ?? 0;
       toast.success(
         bc > 0
-          ? `Extracted (${fmt}) with ${bc} original barcode${bc > 1 ? 's' : ''} from ticket.`
+          ? `Extracted (${fmt}) with ${bc} ticket barcode${bc > 1 ? 's' : ''}.`
           : `Extracted (${fmt}) — check preview and save to share.`
       );
     },
