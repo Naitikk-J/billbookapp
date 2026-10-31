@@ -14,4 +14,4 @@ ENV NODE_ENV=production
 ENV PORT=10000
 EXPOSE 10000
 
-CMD ["xvfb-run", "-a", "--server-args=-screen 0 1280x900x24", "node", "src/server.mjs"]
+CMD ["sh", "-c", "echo indigo-fetch boot; Xvfb :99 -screen 0 1280x900x24 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 & export DISPLAY=:99; exec node src/server.mjs"]
