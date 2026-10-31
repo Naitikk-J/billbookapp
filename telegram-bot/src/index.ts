@@ -12,6 +12,7 @@ import { passengerNameFromDraft, pnrFromDraft } from './mergeFlightDrafts.js';
 import type { FlightInvoiceDraft } from '../../server/src/utils/flightInvoiceDraft.js';
 import { MENU_PREFIXES, mainMenu } from './menu.js';
 import { handleNewBillText, registerNewBillActions, templateKeyboard } from './newBill.js';
+import { handleIndigoText, startIndigoTickets } from './indigoTickets.js';
 import {
   handlePlatformText,
   registerPlatform,
@@ -46,6 +47,7 @@ bot.start(async (ctx) => {
       'New bill asks for the same fields as the app (template, customer, tax, every line, booking details).\n' +
       'Ticket PDF still turns an airline PDF into a voucher.\n' +
       'Ledger, invoices, customers, products, and the flight board are on the keyboard.\n' +
+      'IndiGo Tickets asks for a PNR and last name, then sends the itinerary PDF.\n' +
       'Send - to skip an optional field. Delete always asks you to confirm.',
     mainMenu()
   );
@@ -103,6 +105,10 @@ bot.hears('✈️ Flights', async (ctx) => {
   } catch (err) {
     await ctx.reply(`Flights failed: ${err instanceof Error ? err.message : err}`.slice(0, 400));
   }
+});
+
+bot.hears('🛫 IndiGo Tickets', async (ctx) => {
+  await startIndigoTickets(ctx);
 });
 
 bot.hears('📊 Summary', async (ctx) => {
@@ -215,6 +221,11 @@ bot.on('text', async (ctx) => {
 
   if (session.flow === 'new_bill' && session.step && session.newBill) {
     await handleNewBillText(ctx, session.step, text);
+    return;
+  }
+
+  if (session.flow === 'indigo') {
+    await handleIndigoText(ctx, text);
     return;
   }
 

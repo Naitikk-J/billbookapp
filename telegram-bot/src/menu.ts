@@ -6,6 +6,7 @@ export function mainMenu() {
     ['📒 Ledger', '🧾 Invoices'],
     ['👥 Customers', '📦 Products'],
     ['✈️ Flights', '📊 Summary'],
+    ['🛫 IndiGo Tickets'],
     ['❌ Cancel / Menu'],
   ]).resize();
 }
@@ -15,4 +16,4 @@ export function inr(n: number): string {
   return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
-export const MENU_PREFIXES = ['🆕', '📄', '📒', '🧾', '👥', '📦', '✈️', '📊', '❌'];
+export const MENU_PREFIXES = ['🆕', '📄', '📒', '🧾', '👥', '📦', '✈️', '📊', '🛫', '❌'];

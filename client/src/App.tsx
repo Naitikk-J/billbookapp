@@ -18,6 +18,7 @@ const SettingsPage = lazy(() => import('./pages/app/Settings'));
 const LedgerPage = lazy(() => import('./pages/app/Ledger'));
 const FlightsPage = lazy(() => import('./pages/app/Flights'));
 const FlightInvoicesPage = lazy(() => import('./pages/app/FlightInvoices'));
+const IndigoTicketsPage = lazy(() => import('./pages/app/IndigoTickets'));
 
 function PageFallback() {
   return (
@@ -55,7 +56,8 @@ export default function App() {
           <Route path="ledger" element={<LedgerPage />} />
           <Route path="ledger/:customerId" element={<LedgerPage />} />
           <Route path="flights" element={<FlightsPage />} />
-          <Route path="flight-invoices" element={<FlightInvoicesPage />} />
+            <Route path="flight-invoices" element={<FlightInvoicesPage />} />
+            <Route path="indigo-tickets" element={<IndigoTicketsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 

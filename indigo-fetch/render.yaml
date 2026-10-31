@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: safarmate-indigo-fetch
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: standard
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: INDIGO_FETCH_SECRET
+        sync: false

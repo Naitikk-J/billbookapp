@@ -8,7 +8,8 @@ export type Flow =
   | 'invoices'
   | 'customers'
   | 'products'
-  | 'flights';
+  | 'flights'
+  | 'indigo';
 
 /** One PDF = one passenger ticket under the same PNR. */
 export type ExistingBillMode = 'single' | 'group_pnr';
@@ -143,6 +144,11 @@ export type ProductForm = {
   taxPercent?: number;
 };
 
+export type IndigoForm = {
+  step: 'pnr' | 'lastName';
+  pnr?: string;
+};
+
 export interface ChatSession {
   flow: Flow;
   step?: NewBillStep;
@@ -154,6 +160,7 @@ export interface ChatSession {
   ledger?: LedgerForm;
   pay?: PayForm;
   product?: ProductForm;
+  indigo?: IndigoForm;
 }
 
 const sessions = new Map<number, ChatSession>();
